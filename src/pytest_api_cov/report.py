@@ -19,7 +19,7 @@ def endpoint_to_regex(endpoint: str) -> Pattern[str]:
     return re.compile("^" + temp_endpoint.replace(placeholder, "(.+)") + "$")
 
 
-def contains_escape_characters(endpoint: str) -> str:
+def contains_escape_characters(endpoint: str) -> bool:
     """Escape special characters in the endpoint string."""
     return ("<" in endpoint and ">" in endpoint) or ("{" in endpoint and "}" in endpoint)
 
@@ -65,7 +65,7 @@ def compute_coverage(covered_count: int, uncovered_count: int) -> float:
     return round(100 * covered_count / total, 2) if total > 0 else 0.0
 
 
-def prepare_endpoint_detail(endpoints: List[str], called_data: defaultdict[Any, Set[str]]) -> List[Dict]:
+def prepare_endpoint_detail(endpoints: List[str], called_data: Dict[str, Set[str]]) -> List[Dict[str, Any]]:
     """Prepare endpoint details by mapping each endpoint to its callers."""
     details = []
     for endpoint in endpoints:
@@ -156,7 +156,7 @@ def generate_pytest_api_cov_report(
         )
 
     if api_cov_config.report_path:
-        detail = prepare_endpoint_detail(covered + uncovered, called_data)
+        detail = prepare_endpoint_detail(covered + uncovered, called_data)  # type: ignore[arg-type]
         final_report = {
             "status": status,
             "coverage": coverage,

@@ -1,7 +1,7 @@
 """Data models for pytest-api-cov."""
 
 from collections import defaultdict
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, Iterator, List, Set, Tuple
 
 from pydantic import BaseModel, Field
 
@@ -12,7 +12,7 @@ class ApiCallRecorder(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
     # Map of endpoint paths to sets of test function names that called them
-    calls: Dict[str, Set[str]] = Field(default_factory=lambda: defaultdict(set))
+    calls: Dict[str, Set[str]] = Field(default_factory=dict)
 
     def record_call(self, endpoint: str, test_name: str) -> None:
         """Record that a test called an endpoint."""
@@ -53,15 +53,15 @@ class ApiCallRecorder(BaseModel):
         """Check if an endpoint has been recorded."""
         return endpoint in self.calls
 
-    def items(self):
+    def items(self) -> Iterator[Tuple[str, Set[str]]]:
         """Iterate over endpoint, callers pairs."""
         return self.calls.items()
 
-    def keys(self):
+    def keys(self) -> Iterator[str]:
         """Get all recorded endpoints."""
         return self.calls.keys()
 
-    def values(self):
+    def values(self) -> Iterator[Set[str]]:
         """Get all caller sets."""
         return self.calls.values()
 
@@ -86,7 +86,7 @@ class EndpointDiscovery(BaseModel):
         """Return number of discovered endpoints."""
         return len(self.endpoints)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
         """Iterate over discovered endpoints."""
         return iter(self.endpoints)
 

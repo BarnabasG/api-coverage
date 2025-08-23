@@ -15,7 +15,7 @@ class BaseAdapter:
         """Return a list of all endpoint paths."""
         raise NotImplementedError
 
-    def get_tracked_client(self, recorder: Optional[ApiCallRecorder], test_name: str) -> Any:
+    def get_tracked_client(self, recorder: Optional["ApiCallRecorder"], test_name: str) -> Any:
         """Return a patched test client that records calls."""
         raise NotImplementedError
 
@@ -27,14 +27,14 @@ class FlaskAdapter(BaseAdapter):
         excluded_rules = ("/static/<path:filename>",)
         return sorted([rule.rule for rule in self.app.url_map.iter_rules() if rule.rule not in excluded_rules])
 
-    def get_tracked_client(self, recorder: Optional[ApiCallRecorder], test_name: str) -> Any:
+    def get_tracked_client(self, recorder: Optional["ApiCallRecorder"], test_name: str) -> Any:
         from flask.testing import FlaskClient
 
         if recorder is None:
             return self.app.test_client()
 
         class TrackingFlaskClient(FlaskClient):
-            def open(self, *args, **kwargs):
+            def open(self, *args, **kwargs) -> Any:
                 path = kwargs.get("path") or (args[0] if args else None)
                 if path and hasattr(self.application.url_map, "bind"):
                     try:
@@ -42,7 +42,7 @@ class FlaskAdapter(BaseAdapter):
                         endpoint_name, _ = self.application.url_map.bind("").match(path, method=kwargs.get("method"))
                         # Find the rule object associated with that endpoint name
                         endpoint_rule_string = next(self.application.url_map.iter_rules(endpoint_name)).rule
-                        recorder.record_call(endpoint_rule_string, test_name)
+                        recorder.record_call(endpoint_rule_string, test_name)  # type: ignore[union-attr]
                     except Exception:
                         # Fallback for paths that might not match a rule
                         pass
@@ -58,7 +58,7 @@ class FastAPIAdapter(BaseAdapter):
 
         return sorted([route.path for route in self.app.routes if isinstance(route, APIRoute)])
 
-    def get_tracked_client(self, recorder: Optional[ApiCallRecorder], test_name: str) -> Any:
+    def get_tracked_client(self, recorder: Optional["ApiCallRecorder"], test_name: str) -> Any:
         from starlette.testclient import TestClient
 
         if recorder is None:
@@ -66,9 +66,9 @@ class FastAPIAdapter(BaseAdapter):
 
         # FastAPI patches the 'send' method of the underlying client
         class TrackingFastAPIClient(TestClient):
-            def send(self, *args, **kwargs):
+            def send(self, *args, **kwargs) -> Any:
                 request = args[0]
-                recorder.record_call(request.url.path, test_name)
+                recorder.record_call(request.url.path, test_name)  # type: ignore[union-attr]
                 return super().send(*args, **kwargs)
 
         return TrackingFastAPIClient(self.app)

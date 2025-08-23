@@ -27,7 +27,7 @@ def read_toml_config() -> Dict[str, Any]:
     try:
         with open("pyproject.toml", "rb") as f:
             toml_config = tomli.load(f)
-            return toml_config.get("tool", {}).get("pytest_api_cov", {})
+            return toml_config.get("tool", {}).get("pytest_api_cov", {})  # type: ignore[no-any-return]
     except (FileNotFoundError, tomli.TOMLDecodeError):
         return {}
 
@@ -57,7 +57,7 @@ def supports_unicode() -> bool:
     """Check if the environment supports Unicode characters."""
     if not sys.stdout.isatty():
         return False
-    return sys.stdout and sys.stdout.encoding.lower() in ["utf-8", "utf8"]
+    return bool(sys.stdout) and sys.stdout.encoding.lower() in ["utf-8", "utf8"]
 
 
 def get_pytest_api_cov_report_config(session_config: Any) -> ApiCoverageReportConfig:
