@@ -1,6 +1,6 @@
 """src/pytest_api_cov/frameworks.py"""
 
-from typing import Any, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, List, Optional
 
 if TYPE_CHECKING:
     from .models import ApiCallRecorder

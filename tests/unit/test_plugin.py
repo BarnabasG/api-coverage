@@ -60,7 +60,7 @@ class TestPluginHooks:
         """Test pytest_sessionfinish when --api-cov-report is enabled."""
         mock_session = Mock()
         mock_session.config.getoption.side_effect = lambda flag: flag == "--api-cov-report"
-        
+
         # Create real SessionData with test data
         coverage_data = SessionData()
         coverage_data.recorder.record_call("/test", "test_func")
@@ -106,7 +106,7 @@ class TestPluginHooks:
         """Test pytest_sessionfinish with workeroutput (parallel execution)."""
         mock_session = Mock()
         mock_session.config.getoption.return_value = True
-        
+
         # Create real SessionData with test data
         coverage_data = SessionData()
         coverage_data.recorder.record_call("/test", "test_func")
@@ -134,14 +134,14 @@ class TestPluginHooks:
         """Test pytest_sessionfinish with worker data merging."""
         mock_session = Mock()
         mock_session.config.getoption.side_effect = lambda flag: flag == "--api-cov-report"
-        
+
         # Create real SessionData with test data
         coverage_data = SessionData()
         coverage_data.recorder.record_call("/test", "test_func")
         coverage_data.discovered_endpoints.endpoints = ["/test"]
         mock_session.api_coverage_data = coverage_data
         mock_session.exitstatus = 0
-        
+
         # Use a real dict for worker data to support item assignment
         worker_data = {"/worker_test": ["worker_test"]}
         mock_session.config.worker_api_call_recorder = worker_data
@@ -169,7 +169,7 @@ class TestPluginHooks:
         """Test pytest_sessionfinish with non-dict worker data."""
         mock_session = Mock()
         mock_session.config.getoption.side_effect = lambda flag: flag == "--api-cov-report"
-        
+
         # Create real SessionData with test data
         coverage_data = SessionData()
         coverage_data.recorder.record_call("/test", "test_func")

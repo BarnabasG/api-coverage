@@ -10,7 +10,7 @@ import pytest
 
 from .config import get_pytest_api_cov_report_config
 from .frameworks import get_framework_adapter
-from .models import ApiCallRecorder, SessionData
+from .models import SessionData
 from .pytest_flags import add_pytest_api_cov_flags
 from .report import generate_pytest_api_cov_report
 
@@ -222,11 +222,11 @@ def pytest_sessionfinish(session: pytest.Session) -> None:
             logger.debug("> Sent API call data and discovered endpoints to master process")
         else:
             logger.debug("> No workeroutput found, generating report for master data.")
-            
+
             # Get worker data from config if available
             worker_recorder_data = getattr(session.config, "worker_api_call_recorder", {})
             worker_endpoints = getattr(session.config, "worker_discovered_endpoints", [])
-            
+
             # Merge worker data into session data
             if worker_recorder_data or worker_endpoints:
                 coverage_data.merge_worker_data(worker_recorder_data, worker_endpoints)
