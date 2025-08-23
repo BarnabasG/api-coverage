@@ -76,7 +76,7 @@ pytest_api_cov = "pytest_api_cov.plugin"
 pytest-api-cov = "pytest_api_cov.cli:main"
 
 [tool.ruff]
-include = ["src", "tests", "example"]
+src = ["src", "tests", "example"]
 line-length = 120
 fix = true
 
