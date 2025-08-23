@@ -1,0 +1,92 @@
+[project]
+name = "pytest-api-cov"
+version = "1.0.0"
+description = "Api Coverage Report Pytest Plugin"
+readme = "README.md"
+authors = [
+    {name = "Barnaby Gill", email = "barnabasgill@gmail.com"},
+]
+license = {text = "Apache-2.0"}
+requires-python = ">=3.10"
+
+dependencies = [
+    "fastapi>=0.116.1",
+    "flask>=3.1.1",
+    "httpx>=0.28.1",
+    "pydantic>=2.11.7",
+    "rich>=14.0.0",
+    "starlette>=0.47.1",
+    "tomli>=2.2.1",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.17.0",
+    "pytest>=8.4.1",
+    "pytest-cov>=6.2.1",
+    "pytest-sugar>=1.0.0",
+    "pytest-xdist>=3.8.0",
+    "ruff>=0.12.3",
+    "typeguard>=4.4.4",
+]
+
+# API COVERAGE
+[tool.pytest_api_cov]
+# fail_under = 95.0  # in the command
+show_covered_endpoints = true
+show_uncovered_endpoints = true
+show_excluded_endpoints = true
+exclusion_patterns = [
+    "xyz",
+]
+report_path = "reports/pytest_api_cov.json"
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit", "tests/integration", "example/tests"]
+pythonpath = ["src"]
+
+[tool.coverage.report]
+exclude_lines = [
+    'if __name__ == "__main__":',
+    "if TYPE_CHECKING:",
+]
+show_missing = true
+fail_under = 90.0
+
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pytest_api_cov"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/pytest_api_cov/",
+    "README.md",
+    "LICENSE",
+    "pyproject.toml",
+]
+
+[project.entry-points."pytest11"]
+pytest_api_cov = "pytest_api_cov.plugin"
+
+[project.scripts]
+pytest-api-cov = "pytest_api_cov.cli:main"
+
+[tool.ruff]
+include = ["src", "tests", "example"]
+line-length = 120
+fix = true
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"] # Standard flake8 and isort rules
+
+[tool.mypy]
+files = ["src"]
+strict = true
+pretty = true
+show_column_numbers = true
+show_error_codes = true
+show_error_context = true
