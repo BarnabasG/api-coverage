@@ -46,49 +46,49 @@ class TestFlaskAdapter:
     def test_flask_get_tracked_client_with_recorder(self):
         """Test that get_tracked_client returns tracking client when recorder is provided."""
         # Mock the response_class to be a proper class
-        self.mock_app.response_class = type('MockResponse', (), {})
-        
+        self.mock_app.response_class = type("MockResponse", (), {})
+
         recorder = {}
         client = self.adapter.get_tracked_client(recorder, "test_name")
         # Should return our custom TrackingFlaskClient
-        assert hasattr(client, 'open')
+        assert hasattr(client, "open")
         # The class name should contain 'TrackingFlaskClient' or be a custom class
-        assert 'TrackingFlaskClient' in str(type(client)) or hasattr(client, 'open')
+        assert "TrackingFlaskClient" in str(type(client)) or hasattr(client, "open")
 
     def test_flask_tracking_client_open_method(self):
         """Test the TrackingFlaskClient open method."""
         with patch("flask.testing.FlaskClient") as MockFlaskClient:
             recorder = {}
             client = self.adapter.get_tracked_client(recorder, "test_name")
-            
+
             # Mock the open method to return a response
             client.open = Mock(return_value="response")
-            
+
             # Test with path in kwargs
             response = client.open(path="/test", method="GET")
             assert response == "response"  # Mock response
-            
+
             # Test with path as first argument
             response = client.open("/test2", method="POST")
             assert response == "response"  # Mock response
 
     def test_flask_tracking_client_exception_handling(self):
         """Test exception handling in Flask tracking client."""
-        from unittest.mock import patch, Mock
-        
+        from unittest.mock import Mock, patch
+
         # Set up the mock response_class properly
-        self.mock_app.response_class = type('MockResponse', (), {})
-        
+        self.mock_app.response_class = type("MockResponse", (), {})
+
         recorder = {}
         client = self.adapter.get_tracked_client(recorder, "test_func")
-        
+
         # Mock the parent open method to avoid real Flask setup
-        with patch.object(client.__class__.__bases__[0], 'open', return_value=Mock()) as mock_super_open:
+        with patch.object(client.__class__.__bases__[0], "open", return_value=Mock()) as mock_super_open:
             # Mock iter_rules to raise an exception during client.open call
-            with patch.object(self.mock_app.url_map, 'iter_rules', side_effect=Exception("Unexpected error")):
+            with patch.object(self.mock_app.url_map, "iter_rules", side_effect=Exception("Unexpected error")):
                 # Simulate a request - should not raise exception due to try/except
                 client.open("/test", method="GET")
-        
+
         # Verify super().open was called (meaning our exception handling worked)
         mock_super_open.assert_called_once()
         # Recorder should be empty due to exception handling in lines 45-47
@@ -132,27 +132,27 @@ class TestFastAPIAdapter:
         recorder = {}
         client = self.adapter.get_tracked_client(recorder, "test_name")
         # Should return our custom TrackingFastAPIClient
-        assert hasattr(client, 'send')
+        assert hasattr(client, "send")
         # The class name should contain 'TrackingFastAPIClient' or be a custom class
-        assert 'TrackingFastAPIClient' in str(type(client)) or hasattr(client, 'send')
+        assert "TrackingFastAPIClient" in str(type(client)) or hasattr(client, "send")
 
     def test_fastapi_tracking_client_send_method(self):
         """Test the TrackingFastAPIClient send method."""
         recorder = {}
         client = self.adapter.get_tracked_client(recorder, "test_name")
-        
+
         # Mock the send method to return a response
         client.send = Mock(return_value="response")
-        
+
         # Create a mock request
         mock_request = Mock()
         mock_request.url.path = "/test"
-        
+
         # Test the send method
         response = client.send(mock_request)
         assert response == "response"  # Mock response
         # The recorder should be populated by the tracking client
-        assert "/test" in recorder or hasattr(client, 'send')
+        assert "/test" in recorder or hasattr(client, "send")
 
 
 class TestBaseAdapter:
@@ -161,7 +161,7 @@ class TestBaseAdapter:
     def test_base_adapter_get_endpoints_not_implemented(self):
         """Test that BaseAdapter.get_endpoints raises NotImplementedError."""
         from pytest_api_cov.frameworks import BaseAdapter
-        
+
         base_adapter = BaseAdapter(None)
         with pytest.raises(NotImplementedError):
             base_adapter.get_endpoints()
@@ -169,7 +169,7 @@ class TestBaseAdapter:
     def test_base_adapter_get_tracked_client_not_implemented(self):
         """Test that BaseAdapter.get_tracked_client raises NotImplementedError."""
         from pytest_api_cov.frameworks import BaseAdapter
-        
+
         base_adapter = BaseAdapter(None)
         with pytest.raises(NotImplementedError):
             base_adapter.get_tracked_client({}, "test")
@@ -180,27 +180,28 @@ class TestAdapterFactory:
 
     def test_get_framework_adapter(self):
         """Test the factory function for selecting the correct adapter."""
+
         # Create mock classes to properly set up the type information
         class MockFlask:
             __module__ = "flask.app"
             __name__ = "Flask"
-        
+
         class MockFastAPI:
             __module__ = "fastapi.applications"
             __name__ = "FastAPI"
-        
+
         class MockWSGIHandler:
             __module__ = "django.core.handlers.wsgi"
             __name__ = "WSGIHandler"
-        
+
         mock_flask_app = Mock()
         mock_flask_app.__class__.__module__ = "flask.app"
         mock_flask_app.__class__.__name__ = "Flask"
-        
+
         mock_fastapi_app = Mock()
         mock_fastapi_app.__class__.__module__ = "fastapi.applications"
         mock_fastapi_app.__class__.__name__ = "FastAPI"
-        
+
         mock_unsupported_app = Mock()
         mock_unsupported_app.__class__.__module__ = "django.core.handlers.wsgi"
         mock_unsupported_app.__class__.__name__ = "WSGIHandler"
@@ -219,6 +220,6 @@ class TestAdapterFactory:
         # Remove __module__ attribute
         del mock_class.__module__
         mock_app.__class__ = mock_class
-        
+
         with pytest.raises(TypeError, match="Unsupported application type"):
             get_framework_adapter(mock_app)

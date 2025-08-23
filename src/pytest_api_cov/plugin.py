@@ -5,7 +5,6 @@ import importlib.util
 import logging
 import os
 from collections import defaultdict
-from pathlib import Path
 from typing import Any, Optional
 
 import pytest
@@ -22,27 +21,26 @@ def is_supported_framework(app: Any) -> bool:
     """Check if the app is a supported framework (Flask or FastAPI)."""
     if app is None:
         return False
-    
+
     app_type = type(app).__name__
     module_name = getattr(type(app), "__module__", "").split(".")[0]
-    
-    return (module_name == "flask" and app_type == "Flask") or \
-           (module_name == "fastapi" and app_type == "FastAPI")
+
+    return (module_name == "flask" and app_type == "Flask") or (module_name == "fastapi" and app_type == "FastAPI")
 
 
 def auto_discover_app() -> Optional[Any]:
     """Automatically discover Flask/FastAPI apps in common locations."""
     logger.debug("🔍 Auto-discovering app in common locations...")
-    
+
     # Common file patterns and variable names to check
     common_patterns = [
-        ('app.py', ['app', 'application', 'main']),
-        ('main.py', ['app', 'application', 'main']),
-        ('server.py', ['app', 'application', 'server']),
-        ('wsgi.py', ['app', 'application']),
-        ('asgi.py', ['app', 'application']),
+        ("app.py", ["app", "application", "main"]),
+        ("main.py", ["app", "application", "main"]),
+        ("server.py", ["app", "application", "server"]),
+        ("wsgi.py", ["app", "application"]),
+        ("asgi.py", ["app", "application"]),
     ]
-    
+
     for filename, attr_names in common_patterns:
         if os.path.exists(filename):
             logger.debug(f"🔍 Found {filename}, checking for app variables...")
@@ -53,21 +51,23 @@ def auto_discover_app() -> Optional[Any]:
                 if spec and spec.loader:
                     module = importlib.util.module_from_spec(spec)
                     spec.loader.exec_module(module)
-                    
+
                     # Check each possible app variable name
                     for attr_name in attr_names:
                         if hasattr(module, attr_name):
                             app = getattr(module, attr_name)
                             if is_supported_framework(app):
-                                logger.info(f"✅ Auto-discovered {type(app).__name__} app in {filename} as '{attr_name}'")
+                                logger.info(
+                                    f"✅ Auto-discovered {type(app).__name__} app in {filename} as '{attr_name}'"
+                                )
                                 return app
                             else:
                                 logger.debug(f"🔍 Found '{attr_name}' in {filename} but it's not a supported framework")
-                                
+
             except Exception as e:
                 logger.debug(f"🔍 Could not import {filename}: {e}")
                 continue
-    
+
     logger.debug("🔍 No app auto-discovered")
     return None
 
@@ -115,7 +115,7 @@ def pytest_configure(config: pytest.Config) -> None:
     # Configure logging based on verbosity level
     if config.getoption("--api-cov-report"):
         verbosity = config.option.verbose
-        
+
         # Set up logging level based on pytest verbosity
         if verbosity >= 2:  # -vv or more
             log_level = logging.DEBUG
@@ -123,20 +123,20 @@ def pytest_configure(config: pytest.Config) -> None:
             log_level = logging.INFO
         else:  # normal run
             log_level = logging.WARNING
-            
+
         # Configure the logger
         logger.setLevel(log_level)
-        
+
         # Only add handler if we don't already have one
         if not logger.handlers:
             handler = logging.StreamHandler()
             handler.setLevel(log_level)
-            formatter = logging.Formatter('%(message)s')
+            formatter = logging.Formatter("%(message)s")
             handler.setFormatter(formatter)
             logger.addHandler(handler)
-            
+
         logger.info("Initializing API coverage plugin...")
-    
+
     # Register xdist plugin if available
     if config.pluginmanager.hasplugin("xdist"):
         config.pluginmanager.register(DeferXdistPlugin(), "defer_xdist_plugin")
@@ -153,40 +153,39 @@ def pytest_sessionstart(session: pytest.Session) -> None:
 def client(request: pytest.FixtureRequest) -> Any:
     """
     Smart auto-discovering test client that records API calls for coverage.
-    
+
     Tries to find an 'app' fixture first, then auto-discovers apps in common locations.
     """
     session = request.node.session
-    
+
     # Only proceed if API coverage is enabled
     if not session.config.getoption("--api-cov-report"):
         pytest.skip("API coverage not enabled. Use --api-cov-report flag.")
-    
+
     # Try to get app from existing fixture first
     app = None
     try:
-        app = request.getfixturevalue('app')
+        app = request.getfixturevalue("app")
         logger.debug("🔍 Found 'app' fixture")
     except pytest.FixtureLookupError:
         logger.debug("🔍 No 'app' fixture found, trying auto-discovery...")
         app = auto_discover_app()
-    
+
     # If still no app found, show helpful error
     if app is None:
         helpful_msg = get_helpful_error_message()
         print(helpful_msg)
         pytest.skip("No API app found. See error message above for setup guidance.")
-    
+
     # Validate the app is supported
     if not is_supported_framework(app):
-        pytest.skip(f"Unsupported framework: {type(app).__name__}. "
-                   f"pytest-api-coverage supports Flask and FastAPI.")
-    
+        pytest.skip(f"Unsupported framework: {type(app).__name__}. pytest-api-coverage supports Flask and FastAPI.")
+
     try:
         adapter = get_framework_adapter(app)
     except TypeError as e:
         pytest.skip(f"Framework detection failed: {e}")
-    
+
     recorder = getattr(session, "api_call_recorder", None)
 
     # Discover endpoints on the first run of this fixture.
@@ -206,9 +205,11 @@ def client(request: pytest.FixtureRequest) -> Any:
 def pytest_sessionfinish(session: pytest.Session) -> None:
     """Generate the API coverage report at the end of the session."""
     if session.config.getoption("--api-cov-report"):
-        logger.debug(f"📝 pytest-api-coverage: Generating report for {len(getattr(session, 'api_call_recorder', {}))} recorded endpoints.")
+        logger.debug(
+            f"📝 pytest-api-coverage: Generating report for {len(getattr(session, 'api_call_recorder', {}))} recorded endpoints."
+        )
         logger.debug(f"🔍 session.config has workeroutput: {hasattr(session.config, 'workeroutput')}")
-        
+
         if hasattr(session.config, "workeroutput"):
             serializable_recorder = {k: list(v) for k, v in session.api_call_recorder.items()}
             session.config.workeroutput["api_call_recorder"] = serializable_recorder
@@ -221,7 +222,7 @@ def pytest_sessionfinish(session: pytest.Session) -> None:
             worker_data = getattr(session.config, "worker_api_call_recorder", defaultdict(set))
             logger.debug(f"🔍 Master data: {master_data}")
             logger.debug(f"🔍 Worker data: {dict(worker_data) if worker_data else {}}")
-            
+
             merged = defaultdict(set)
             if isinstance(worker_data, dict):
                 for endpoint, calls in worker_data.items():
@@ -230,14 +231,15 @@ def pytest_sessionfinish(session: pytest.Session) -> None:
                 merged = worker_data
             for endpoint, calls in master_data.items():
                 merged[endpoint].update(calls)
-                
+
             logger.debug(f"🔍 Merged data: {dict(merged)}")
 
             # Use worker discovered endpoints if available, fallback to session
-            discovered_endpoints = getattr(session.config, "worker_discovered_endpoints", 
-                                          getattr(session, "discovered_endpoints", []))
+            discovered_endpoints = getattr(
+                session.config, "worker_discovered_endpoints", getattr(session, "discovered_endpoints", [])
+            )
             logger.debug(f"🔍 Using discovered endpoints: {discovered_endpoints}")
-            
+
             api_cov_config = get_pytest_api_cov_report_config(session.config)
             status = generate_pytest_api_cov_report(
                 api_cov_config=api_cov_config,
@@ -258,24 +260,21 @@ class DeferXdistPlugin:
         discovered_endpoints = node.workeroutput.get("discovered_endpoints", [])
         logger.debug(f"🔍 Worker data: {worker_data}")
         logger.debug(f"🔍 Worker discovered endpoints: {discovered_endpoints}")
-        
+
         # Merge API call data
         if worker_data:
             logger.debug("🔍 Worker data found, merging with current data.")
             current = getattr(node.config, "worker_api_call_recorder", defaultdict(set))
             logger.debug(f"🔍 Current data before merge: {dict(current) if current else {}}")
-            
+
             for endpoint, calls in worker_data.items():
                 logger.debug(f"🔍 Updating current data with: {endpoint} -> {calls}")
                 current[endpoint].update(calls)
-            
+
             node.config.worker_api_call_recorder = current
             logger.debug(f"🔍 Updated current data: {dict(current)}")
-        
+
         # Merge discovered endpoints (take the first non-empty list we get)
         if discovered_endpoints and not getattr(node.config, "worker_discovered_endpoints", []):
             node.config.worker_discovered_endpoints = discovered_endpoints
             logger.debug(f"🔍 Set discovered endpoints from worker: {discovered_endpoints}")
-
-
-

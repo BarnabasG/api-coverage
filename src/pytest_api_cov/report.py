@@ -99,7 +99,7 @@ def generate_pytest_api_cov_report(
     console = Console()
 
     if not discovered_endpoints:
-        console.print(f"\n[bold red]No endpoints discovered. Please check your test setup.[/bold red]")
+        console.print("\n[bold red]No endpoints discovered. Please check your test setup.[/bold red]")
         return 0
 
     separator = "=" * 20

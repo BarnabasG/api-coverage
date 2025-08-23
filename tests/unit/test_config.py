@@ -10,7 +10,6 @@ from pytest_api_cov.config import (
     get_pytest_api_cov_report_config,
     read_session_config,
     read_toml_config,
-    supports_unicode,
 )
 
 
@@ -26,7 +25,7 @@ class TestConfigLoading:
             exclusion_patterns = ["/admin/*"]
         """
         (tmp_path / "pyproject.toml").write_text(pyproject_content)
-        
+
         # Change to the tmp_path directory temporarily
         original_cwd = os.getcwd()
         os.chdir(tmp_path)
@@ -47,7 +46,7 @@ class TestConfigLoading:
     def test_read_toml_config_missing_section(self, tmp_path):
         """Ensure it returns an empty dict if the [tool.pytest_api_cov] section is missing."""
         (tmp_path / "pyproject.toml").write_text("[project]\nname = 'test'")
-        
+
         # Change to the tmp_path directory temporarily
         original_cwd = os.getcwd()
         os.chdir(tmp_path)

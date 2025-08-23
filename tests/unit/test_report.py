@@ -53,7 +53,7 @@ class TestEndpointCategorization:
         discovered = ["/public", "/admin", "/internal"]
         called = {"/public", "/admin"}
         excluded = ["/admin"]
-        
+
         covered, uncovered, excluded_out = categorise_endpoints(discovered, called, excluded)
         assert set(covered) == {"/public"}
         assert set(uncovered) == {"/internal"}
@@ -64,7 +64,7 @@ class TestEndpointCategorization:
         discovered = ["/public", "/admin/users", "/admin/settings", "/internal"]
         called = {"/public", "/admin/users"}
         excluded = ["/admin/users", "/admin/settings"]  # Use exact matches since regex escapes special chars
-        
+
         covered, uncovered, excluded_out = categorise_endpoints(discovered, called, excluded)
         assert set(covered) == {"/public"}
         assert set(uncovered) == {"/internal"}
@@ -158,12 +158,14 @@ class TestCoverageCalculationAndReporting:
     def test_generate_report_with_force_sugar(self, mock_console_cls):
         """Test report generation with force_sugar enabled."""
         mock_console = mock_console_cls.return_value
-        config = ApiCoverageReportConfig.model_validate({
-            "force_sugar": True,
-            "show_uncovered_endpoints": True,
-            "show_covered_endpoints": True,
-            "show_excluded_endpoints": True
-        })
+        config = ApiCoverageReportConfig.model_validate(
+            {
+                "force_sugar": True,
+                "show_uncovered_endpoints": True,
+                "show_covered_endpoints": True,
+                "show_excluded_endpoints": True,
+            }
+        )
         discovered = ["/a", "/b"]
         called = {"/a"}
         excluded = ["/b"]
@@ -172,19 +174,23 @@ class TestCoverageCalculationAndReporting:
 
         assert status == 0
         # Check that sugar symbols are used
-        sugar_prints = [c for c in mock_console.print.call_args_list if "❌" in c.args[0] or "✅" in c.args[0] or "🚫" in c.args[0]]
+        sugar_prints = [
+            c for c in mock_console.print.call_args_list if "❌" in c.args[0] or "✅" in c.args[0] or "🚫" in c.args[0]
+        ]
         assert len(sugar_prints) > 0
 
     @patch("pytest_api_cov.report.Console")
     def test_generate_report_without_force_sugar(self, mock_console_cls):
         """Test report generation without force_sugar (default behavior)."""
         mock_console = mock_console_cls.return_value
-        config = ApiCoverageReportConfig.model_validate({
-            "force_sugar": False,
-            "show_uncovered_endpoints": True,
-            "show_covered_endpoints": True,
-            "show_excluded_endpoints": True
-        })
+        config = ApiCoverageReportConfig.model_validate(
+            {
+                "force_sugar": False,
+                "show_uncovered_endpoints": True,
+                "show_covered_endpoints": True,
+                "show_excluded_endpoints": True,
+            }
+        )
         discovered = ["/a", "/b"]
         called = {"/a"}
         excluded = ["/b"]
@@ -193,7 +199,11 @@ class TestCoverageCalculationAndReporting:
 
         assert status == 0
         # Check that default symbols are used
-        default_prints = [c for c in mock_console.print.call_args_list if "[X]" in c.args[0] or "[.]" in c.args[0] or "[-]" in c.args[0]]
+        default_prints = [
+            c
+            for c in mock_console.print.call_args_list
+            if "[X]" in c.args[0] or "[.]" in c.args[0] or "[-]" in c.args[0]
+        ]
         assert len(default_prints) > 0
 
 
@@ -205,9 +215,9 @@ class TestPrintEndpoints:
         """Test print_endpoints when there are endpoints to print."""
         mock_console = mock_console_cls.return_value
         endpoints = ["/a", "/b"]
-        
+
         print_endpoints(mock_console, "Test Label", endpoints, "✓", "green")
-        
+
         # Should print the label and each endpoint
         assert mock_console.print.call_count == 3  # Label + 2 endpoints
         label_call = mock_console.print.call_args_list[0]
@@ -218,9 +228,9 @@ class TestPrintEndpoints:
         """Test print_endpoints when there are no endpoints to print."""
         mock_console = mock_console_cls.return_value
         endpoints = []
-        
+
         print_endpoints(mock_console, "Test Label", endpoints, "✓", "green")
-        
+
         # Should not print anything when no endpoints
         mock_console.print.assert_not_called()
 
@@ -234,9 +244,9 @@ class TestWriteReportFile:
         """Test that write_report_file writes data correctly."""
         report_data = {"coverage": 100.0, "endpoints": ["/a", "/b"]}
         report_path = "test_report.json"
-        
+
         write_report_file(report_data, report_path)
-        
+
         # Verify file operations
         mock_open.assert_called_once()
         # The path is resolved to absolute path, so just check the filename

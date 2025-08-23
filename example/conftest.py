@@ -1,7 +1,6 @@
 """example/conftest.py"""
 
 import pytest
-
 from example.src.main import app as fastapi_app
 
 
