@@ -2,6 +2,7 @@
 from collections import defaultdict
 from unittest.mock import Mock, patch
 
+from pytest_api_cov.models import SessionData
 from pytest_api_cov.plugin import (
     DeferXdistPlugin,
     pytest_addoption,
@@ -31,9 +32,11 @@ class TestPluginHooks:
 
         pytest_sessionstart(mock_session)
 
-        assert hasattr(mock_session, "api_call_recorder")
-        assert hasattr(mock_session, "discovered_endpoints")
-        assert mock_session.discovered_endpoints is None
+        assert hasattr(mock_session, "api_coverage_data")
+        assert mock_session.api_coverage_data is not None
+        # Verify it's a SessionData instance with proper structure
+        assert hasattr(mock_session.api_coverage_data, "recorder")
+        assert hasattr(mock_session.api_coverage_data, "discovered_endpoints")
 
     def test_pytest_sessionstart_without_api_cov_report(self):
         """Test pytest_sessionstart when --api-cov-report is disabled."""
@@ -49,8 +52,7 @@ class TestPluginHooks:
         pytest_sessionstart(mock_session)
 
         # Should not set any attributes when flag is False
-        assert not hasattr(mock_session, "api_call_recorder")
-        assert not hasattr(mock_session, "discovered_endpoints")
+        assert not hasattr(mock_session, "api_coverage_data")
 
     @patch("pytest_api_cov.plugin.get_pytest_api_cov_report_config")
     @patch("pytest_api_cov.plugin.generate_pytest_api_cov_report")
@@ -58,15 +60,19 @@ class TestPluginHooks:
         """Test pytest_sessionfinish when --api-cov-report is enabled."""
         mock_session = Mock()
         mock_session.config.getoption.side_effect = lambda flag: flag == "--api-cov-report"
-        mock_session.api_call_recorder = {"/test": ["test_func"]}
-        mock_session.discovered_endpoints = ["/test"]
+        
+        # Create real SessionData with test data
+        coverage_data = SessionData()
+        coverage_data.recorder.record_call("/test", "test_func")
+        coverage_data.discovered_endpoints.endpoints = ["/test"]
+        mock_session.api_coverage_data = coverage_data
         mock_session.exitstatus = 0
 
         # Remove workeroutput attribute to force the else path
         del mock_session.config.workeroutput
-        # Remove worker_api_call_recorder so getattr returns defaultdict(set)
-        if hasattr(mock_session.config, "worker_api_call_recorder"):
-            del mock_session.config.worker_api_call_recorder
+        # Set specific defaults for worker data
+        mock_session.config.worker_api_call_recorder = {}
+        mock_session.config.worker_discovered_endpoints = []
 
         mock_config = Mock()
         mock_get_config.return_value = mock_config
@@ -92,7 +98,7 @@ class TestPluginHooks:
         pytest_sessionfinish(mock_session)
 
         # Should not call any coverage functions
-        assert not hasattr(mock_session, "api_call_recorder")
+        assert not hasattr(mock_session, "api_coverage_data")
 
     @patch("pytest_api_cov.config.get_pytest_api_cov_report_config")
     @patch("pytest_api_cov.report.generate_pytest_api_cov_report")
@@ -100,8 +106,12 @@ class TestPluginHooks:
         """Test pytest_sessionfinish with workeroutput (parallel execution)."""
         mock_session = Mock()
         mock_session.config.getoption.return_value = True
-        mock_session.api_call_recorder = {"/test": ["test_func"]}
-        mock_session.discovered_endpoints = ["/test"]
+        
+        # Create real SessionData with test data
+        coverage_data = SessionData()
+        coverage_data.recorder.record_call("/test", "test_func")
+        coverage_data.discovered_endpoints.endpoints = ["/test"]
+        mock_session.api_coverage_data = coverage_data
         mock_session.exitstatus = 0
 
         # Use a real dict for workeroutput to support item assignment
@@ -116,6 +126,7 @@ class TestPluginHooks:
 
         # Should serialize the recorder for workers
         assert workeroutput["api_call_recorder"] == {"/test": ["test_func"]}
+        assert workeroutput["discovered_endpoints"] == ["/test"]
 
     @patch("pytest_api_cov.plugin.get_pytest_api_cov_report_config")
     @patch("pytest_api_cov.plugin.generate_pytest_api_cov_report")
@@ -123,12 +134,18 @@ class TestPluginHooks:
         """Test pytest_sessionfinish with worker data merging."""
         mock_session = Mock()
         mock_session.config.getoption.side_effect = lambda flag: flag == "--api-cov-report"
-        mock_session.api_call_recorder = {"/test": ["test_func"]}
-        mock_session.discovered_endpoints = ["/test"]
+        
+        # Create real SessionData with test data
+        coverage_data = SessionData()
+        coverage_data.recorder.record_call("/test", "test_func")
+        coverage_data.discovered_endpoints.endpoints = ["/test"]
+        mock_session.api_coverage_data = coverage_data
         mock_session.exitstatus = 0
+        
         # Use a real dict for worker data to support item assignment
         worker_data = {"/worker_test": ["worker_test"]}
         mock_session.config.worker_api_call_recorder = worker_data
+        mock_session.config.worker_discovered_endpoints = ["/worker_test"]
 
         # Remove workeroutput attribute to force the else path
         del mock_session.config.workeroutput
@@ -152,8 +169,12 @@ class TestPluginHooks:
         """Test pytest_sessionfinish with non-dict worker data."""
         mock_session = Mock()
         mock_session.config.getoption.side_effect = lambda flag: flag == "--api-cov-report"
-        mock_session.api_call_recorder = {"/test": ["test_func"]}
-        mock_session.discovered_endpoints = ["/test"]
+        
+        # Create real SessionData with test data
+        coverage_data = SessionData()
+        coverage_data.recorder.record_call("/test", "test_func")
+        coverage_data.discovered_endpoints.endpoints = ["/test"]
+        mock_session.api_coverage_data = coverage_data
         mock_session.exitstatus = 0
         # Set worker data to a custom object (non-dict but still valid)
         # This should trigger the 'else' branch on line 66
@@ -188,6 +209,7 @@ class TestPluginHooks:
                 return bool(self.data)
 
         mock_session.config.worker_api_call_recorder = NonDictWorkerData()
+        mock_session.config.worker_discovered_endpoints = []
 
         # Remove workeroutput attribute to force the else path
         del mock_session.config.workeroutput

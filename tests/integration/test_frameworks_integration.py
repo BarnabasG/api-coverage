@@ -2,6 +2,7 @@
 import pytest
 
 from pytest_api_cov.frameworks import FastAPIAdapter, FlaskAdapter
+from pytest_api_cov.models import ApiCallRecorder
 
 
 class TestFlaskIntegration:
@@ -35,7 +36,7 @@ class TestFlaskIntegration:
             assert "/items" in endpoints
 
             # Test tracking functionality
-            recorder = {}
+            recorder = ApiCallRecorder()
             client = adapter.get_tracked_client(recorder, "test_flask_tracking")
 
             # Make requests to test tracking
@@ -52,9 +53,9 @@ class TestFlaskIntegration:
             assert "/" in recorder
             assert "/users/<user_id>" in recorder
             assert "/items" in recorder
-            assert "test_flask_tracking" in recorder["/"]
-            assert "test_flask_tracking" in recorder["/users/<user_id>"]
-            assert "test_flask_tracking" in recorder["/items"]
+            assert "test_flask_tracking" in recorder.get_callers("/")
+            assert "test_flask_tracking" in recorder.get_callers("/users/<user_id>")
+            assert "test_flask_tracking" in recorder.get_callers("/items")
 
         except ImportError:
             pytest.skip("Flask not available for integration testing")
@@ -117,7 +118,7 @@ class TestFastAPIIntegration:
             assert "/items" in endpoints
 
             # Test tracking functionality
-            recorder = {}
+            recorder = ApiCallRecorder()
             client = adapter.get_tracked_client(recorder, "test_fastapi_tracking")
 
             # Make requests to test tracking
@@ -133,15 +134,15 @@ class TestFastAPIIntegration:
             # Verify tracking worked
             assert "/" in recorder
             assert "/items" in recorder
-            assert "test_fastapi_tracking" in recorder["/"]
-            assert "test_fastapi_tracking" in recorder["/items"]
+            assert "test_fastapi_tracking" in recorder.get_callers("/")
+            assert "test_fastapi_tracking" in recorder.get_callers("/items")
 
             # Note: FastAPI tracking stores the actual path, not the route pattern
             # This is different from Flask which stores the route pattern
             # We can verify that some user path was tracked
             user_paths = [k for k in recorder.keys() if k.startswith("/users/")]
             assert len(user_paths) > 0
-            assert "test_fastapi_tracking" in recorder[user_paths[0]]
+            assert "test_fastapi_tracking" in recorder.get_callers(user_paths[0])
 
         except ImportError:
             pytest.skip("FastAPI not available for integration testing")
