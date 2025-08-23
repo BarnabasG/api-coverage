@@ -173,7 +173,7 @@ class TestCmdInit:
 
     @patch('pytest_api_cov.cli.detect_framework_and_app')
     @patch('builtins.input')
-    @patch('os.path.exists')
+    @patch('pytest_api_cov.cli.os.path.exists')
     @patch('builtins.open', new_callable=mock_open)
     @patch('builtins.print')
     def test_init_success_no_existing_files(self, mock_print, mock_file, mock_exists, mock_input, mock_detect):
@@ -192,7 +192,7 @@ class TestCmdInit:
 
     @patch('pytest_api_cov.cli.detect_framework_and_app')
     @patch('builtins.input')
-    @patch('os.path.exists')
+    @patch('pytest_api_cov.cli.os.path.exists')
     @patch('builtins.open', new_callable=mock_open)
     @patch('builtins.print')
     def test_init_with_existing_conftest(self, mock_print, mock_file, mock_exists, mock_input, mock_detect):
@@ -213,9 +213,10 @@ class TestCmdInit:
 
     @patch('pytest_api_cov.cli.detect_framework_and_app')
     @patch('builtins.input')
-    @patch('os.path.exists')
+    @patch('pytest_api_cov.cli.os.path.exists')
+    @patch('builtins.open', new_callable=mock_open)
     @patch('builtins.print')
-    def test_init_with_existing_pyproject(self, mock_print, mock_exists, mock_input, mock_detect):
+    def test_init_with_existing_pyproject(self, mock_print, mock_file, mock_exists, mock_input, mock_detect):
         """Test init with existing pyproject.toml."""
         mock_detect.return_value = ("FastAPI", "main.py", "main")
         
@@ -232,9 +233,10 @@ class TestCmdInit:
 
     @patch('pytest_api_cov.cli.detect_framework_and_app')
     @patch('builtins.input')
-    @patch('os.path.exists')
+    @patch('pytest_api_cov.cli.os.path.exists')
+    @patch('builtins.open', new_callable=mock_open)
     @patch('builtins.print')
-    def test_init_user_declines_conftest_overwrite(self, mock_print, mock_exists, mock_input, mock_detect):
+    def test_init_user_declines_conftest_overwrite(self, mock_print, mock_file, mock_exists, mock_input, mock_detect):
         """Test when user declines to overwrite existing conftest."""
         mock_detect.return_value = ("FastAPI", "app.py", "app")
         mock_exists.return_value = True  # conftest.py exists
@@ -247,8 +249,9 @@ class TestCmdInit:
         # Should not see "Created conftest.py" message
 
     @patch('pytest_api_cov.cli.detect_framework_and_app')
+    @patch('builtins.open', new_callable=mock_open)
     @patch('builtins.print')
-    def test_init_no_app_detected(self, mock_print, mock_detect):
+    def test_init_no_app_detected(self, mock_print, mock_file, mock_detect):
         """Test init when no app is detected."""
         mock_detect.return_value = None
         
@@ -264,7 +267,7 @@ class TestCmdInit:
         """Test that init prints helpful next steps."""
         mock_detect.return_value = ("FastAPI", "app.py", "app")
         
-        with patch('os.path.exists', return_value=False), \
+        with patch('pytest_api_cov.cli.os.path.exists', return_value=False), \
              patch('builtins.input', return_value="n"), \
              patch('builtins.open', mock_open()):
             result = cmd_init()
