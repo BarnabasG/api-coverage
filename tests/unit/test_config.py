@@ -3,6 +3,7 @@ import os
 from unittest.mock import Mock, patch
 
 import pytest
+import tomli
 from pydantic import ValidationError
 
 from pytest_api_cov.config import (
@@ -10,6 +11,7 @@ from pytest_api_cov.config import (
     get_pytest_api_cov_report_config,
     read_session_config,
     read_toml_config,
+    supports_unicode,
 )
 
 
@@ -40,6 +42,12 @@ class TestConfigLoading:
     def test_read_toml_config_file_not_found(self):
         """Ensure it returns an empty dict if pyproject.toml is missing."""
         with patch("builtins.open", side_effect=FileNotFoundError):
+            config = read_toml_config()
+            assert config == {}
+
+    def test_read_toml_config_toml_decode_error(self):
+        """Ensure it returns an empty dict if pyproject.toml has syntax errors."""
+        with patch("builtins.open", side_effect=tomli.TOMLDecodeError("Invalid TOML", "", 0)):
             config = read_toml_config()
             assert config == {}
 
@@ -95,32 +103,48 @@ class TestConfigLoading:
         config = read_session_config(mock_session_config)
         assert "fail_under" not in config
 
-    # @pytest.mark.skip(reason="sys.stdout.encoding is readonly, skipping for now")
-    # def test_supports_unicode(self):
-    #     """Test the supports_unicode function."""
-    #     # Test when stdout is not a tty
-    #     with patch("sys.stdout.isatty", return_value=False):
-    #         assert supports_unicode() is False
+    def test_supports_unicode_not_tty(self):
+        """Test supports_unicode when stdout is not a tty."""
+        with patch("sys.stdout.isatty", return_value=False):
+            assert supports_unicode() is False
 
-    #     # Test when stdout is a tty with UTF-8 encoding
-    #     with patch("sys.stdout.isatty", return_value=True), \
-    #          patch("sys.stdout.encoding", "utf-8", create=True):
-    #         assert supports_unicode() is True
+    def test_supports_unicode_utf8_encoding(self):
+        """Test supports_unicode with UTF-8 encoding."""
+        mock_stdout = Mock()
+        mock_stdout.isatty.return_value = True
+        mock_stdout.encoding = "utf-8"
+        
+        with patch("sys.stdout", mock_stdout):
+            assert supports_unicode() is True
 
-    #     # Test when stdout is a tty with UTF8 encoding
-    #     with patch("sys.stdout.isatty", return_value=True), \
-    #          patch("sys.stdout.encoding", "utf8", create=True):
-    #         assert supports_unicode() is True
+    def test_supports_unicode_utf8_encoding_uppercase(self):
+        """Test supports_unicode with UTF8 encoding (no dash)."""
+        mock_stdout = Mock()
+        mock_stdout.isatty.return_value = True
+        mock_stdout.encoding = "UTF8"
+        
+        with patch("sys.stdout", mock_stdout):
+            assert supports_unicode() is True
 
-    #     # Test when stdout is a tty with non-UTF encoding
-    #     with patch("sys.stdout.isatty", return_value=True), \
-    #          patch("sys.stdout.encoding", "ascii", create=True):
-    #         assert supports_unicode() is False
+    def test_supports_unicode_non_utf_encoding(self):
+        """Test supports_unicode with non-UTF encoding."""
+        mock_stdout = Mock()
+        mock_stdout.isatty.return_value = True
+        mock_stdout.encoding = "ascii"
+        
+        with patch("sys.stdout", mock_stdout):
+            assert supports_unicode() is False
 
-    #     # Test when stdout is None
-    #     with patch("sys.stdout.isatty", return_value=True), \
-    #          patch("sys.stdout", None):
-    #         assert supports_unicode() is False
+    def test_supports_unicode_none_stdout(self):
+        """Test supports_unicode when stdout is falsy."""
+        # Create a mock that returns None for isatty() but is still falsy when checked with bool()
+        mock_stdout = Mock()
+        mock_stdout.isatty.return_value = True  # Passes first check
+        mock_stdout.__bool__ = Mock(return_value=False)  # Fails bool(sys.stdout) check
+        mock_stdout.encoding = "utf-8"
+        
+        with patch("sys.stdout", mock_stdout):
+            assert supports_unicode() is False
 
 
 class TestConfigMerging:
@@ -179,3 +203,41 @@ class TestConfigMerging:
         """Ensure invalid types raise a validation error."""
         with pytest.raises(ValidationError):
             ApiCoverageReportConfig.model_validate({"fail_under": "not-a-float"})
+
+    def test_read_session_config_empty_options(self):
+        """Test read_session_config with no options set."""
+        mock_session_config = Mock()
+        mock_session_config.getoption.return_value = None
+        
+        config = read_session_config(mock_session_config)
+        assert config == {}
+
+    def test_read_session_config_with_empty_list(self):
+        """Test read_session_config with empty list value."""
+        mock_session_config = Mock()
+        mock_session_config.getoption.side_effect = lambda name: {
+            "--api-cov-exclusion-patterns": [],
+        }.get(name)
+        
+        config = read_session_config(mock_session_config)
+        assert "exclusion_patterns" not in config
+
+    def test_read_session_config_with_false_boolean(self):
+        """Test read_session_config with False boolean value."""
+        mock_session_config = Mock()
+        mock_session_config.getoption.side_effect = lambda name: {
+            "--api-cov-show-covered-endpoints": False,
+        }.get(name)
+        
+        config = read_session_config(mock_session_config)
+        assert "show_covered_endpoints" not in config
+
+    def test_read_session_config_with_none_value(self):
+        """Test read_session_config with None value."""
+        mock_session_config = Mock()
+        mock_session_config.getoption.side_effect = lambda name: {
+            "--api-cov-fail-under": None,
+        }.get(name)
+        
+        config = read_session_config(mock_session_config)
+        assert "fail_under" not in config

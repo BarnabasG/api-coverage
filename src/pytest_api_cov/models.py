@@ -111,11 +111,12 @@ class SessionData(BaseModel):
         """Merge data from a worker process."""
         # Handle recorder data
         if isinstance(worker_recorder, dict):
-            # Convert from serializable format
-            if worker_recorder and isinstance(next(iter(worker_recorder.values())), list):
+            # Check if all values are lists (serializable format)
+            all_lists = worker_recorder and all(isinstance(v, list) for v in worker_recorder.values())
+            if all_lists:
                 worker_api_recorder = ApiCallRecorder.from_serializable(worker_recorder)
             else:
-                # Handle raw dict format
+                # Handle raw dict format or mixed types
                 calls = {k: set(v) if isinstance(v, (list, set)) else {v} for k, v in worker_recorder.items()}
                 worker_api_recorder = ApiCallRecorder(calls=calls)
 
