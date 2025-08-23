@@ -57,7 +57,7 @@ class TestFlaskAdapter:
 
     def test_flask_tracking_client_open_method(self):
         """Test the TrackingFlaskClient open method."""
-        with patch("flask.testing.FlaskClient") as MockFlaskClient:
+        with patch("flask.testing.FlaskClient"):
             recorder = {}
             client = self.adapter.get_tracked_client(recorder, "test_name")
 
@@ -123,7 +123,7 @@ class TestFastAPIAdapter:
     def test_fastapi_get_tracked_client_no_recorder(self):
         """Test that get_tracked_client returns normal client when recorder is None."""
         with patch("starlette.testclient.TestClient") as MockTestClient:
-            client = self.adapter.get_tracked_client(None, "test_name")
+            self.adapter.get_tracked_client(None, "test_name")
             # Should return the TestClient, not our tracking client
             MockTestClient.assert_called_once_with(self.mock_app)
 

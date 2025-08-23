@@ -93,7 +93,6 @@ class TestFastAPIIntegration:
         """Test with a real FastAPI app."""
         try:
             from fastapi import FastAPI
-            from fastapi.testclient import TestClient
 
             app = FastAPI()
 
@@ -150,7 +149,6 @@ class TestFastAPIIntegration:
     def test_fastapi_route_filtering(self):
         """Test that only APIRoute instances are included."""
         try:
-            import os
             import tempfile
 
             from fastapi import FastAPI

@@ -7,6 +7,6 @@ from example.app import app
 
 
 @pytest.fixture
-def app():
+def app():  # noqa: F811
     """Provide the FastAPI app for API coverage testing."""
     return app

@@ -9,7 +9,7 @@ ruff:
 
 mypy:
 	@echo "Running mypy..."
-	@uv run mypy .
+	@uv run mypy
 
 format: ruff mypy
 

@@ -184,7 +184,7 @@ def main():
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # Init command
-    init_parser = subparsers.add_parser("init", help="Initialize pytest-api-cov setup")
+    subparsers.add_parser("init", help="Initialize pytest-api-cov setup")
 
     args = parser.parse_args()
 

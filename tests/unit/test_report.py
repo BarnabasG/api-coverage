@@ -168,7 +168,6 @@ class TestCoverageCalculationAndReporting:
         )
         discovered = ["/a", "/b"]
         called = {"/a"}
-        excluded = ["/b"]
 
         status = generate_pytest_api_cov_report(config, called, discovered)
 
@@ -193,7 +192,6 @@ class TestCoverageCalculationAndReporting:
         )
         discovered = ["/a", "/b"]
         called = {"/a"}
-        excluded = ["/b"]
 
         status = generate_pytest_api_cov_report(config, called, discovered)
 

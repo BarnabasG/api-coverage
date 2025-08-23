@@ -75,7 +75,7 @@ def auto_discover_app() -> Optional[Any]:
 def get_helpful_error_message() -> str:
     """Generate a helpful error message for setup guidance."""
     return """
-🚫 No API app found! 
+🚫 No API app found!
 
 Quick Setup Options:
 
@@ -84,17 +84,17 @@ Option 1 - Auto-discovery (Recommended):
   • app.py (with variable named 'app', 'application', or 'main')
   • main.py (with variable named 'app', 'application', or 'main')
   • server.py (with variable named 'app', 'application', or 'server')
-  
+
   Example app.py:
     from fastapi import FastAPI
     app = FastAPI()  # <- Plugin will auto-discover this
-    
+
 Option 2 - Manual fixture:
   Create conftest.py with:
-  
+
     import pytest
     from your_module import your_app
-    
+
     @pytest.fixture
     def app():
         return your_app
@@ -206,7 +206,8 @@ def pytest_sessionfinish(session: pytest.Session) -> None:
     """Generate the API coverage report at the end of the session."""
     if session.config.getoption("--api-cov-report"):
         logger.debug(
-            f"📝 pytest-api-coverage: Generating report for {len(getattr(session, 'api_call_recorder', {}))} recorded endpoints."
+            f"📝 pytest-api-coverage: Generating report for {len(getattr(session, 'api_call_recorder', {}))} "
+            "recorded endpoints."
         )
         logger.debug(f"🔍 session.config has workeroutput: {hasattr(session.config, 'workeroutput')}")
 
