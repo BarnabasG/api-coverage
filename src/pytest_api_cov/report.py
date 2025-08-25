@@ -29,11 +29,20 @@ def categorise_endpoints(
     called_data: Dict[str, Set[str]],
     exclusion_patterns: List[str],
 ) -> Tuple[List[str], List[str], List[str]]:
-    """Categorise endpoints into covered, uncovered, and excluded."""
+    """Categorise endpoints into covered, uncovered, and excluded.
+    
+    Exclusion patterns support simple wildcard matching:
+    - Use * for wildcard (matches any characters)
+    - All other characters are matched literally
+    - Examples: "/admin/*", "/health", "/docs/*"
+    """
     covered, uncovered, excluded = [], [], []
-    regex_exclusion_patterns = re.compile("|".join(map(re.escape, exclusion_patterns))) if exclusion_patterns else None
+    
+    # Convert simple patterns to regex (escape special chars, handle wildcards)
+    compiled_patterns = [re.compile(f'^{re.escape(pattern).replace(r"\*", ".*")}$') for pattern in exclusion_patterns] if exclusion_patterns else None
+    
     for endpoint in endpoints:
-        if regex_exclusion_patterns and regex_exclusion_patterns.search(endpoint):
+        if exclusion_patterns and any(p.match(endpoint) for p in compiled_patterns):
             excluded.append(endpoint)
             continue
         elif contains_escape_characters(endpoint):

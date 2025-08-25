@@ -117,11 +117,14 @@ show_uncovered_endpoints = true
 show_covered_endpoints = false
 show_excluded_endpoints = false
 
-# Exclude endpoints from coverage
+# Exclude endpoints from coverage using simple wildcard patterns
+# Use * for wildcard matching, all other characters are matched literally
 exclusion_patterns = [
-    "/health",
-    "/metrics", 
-    "/docs"
+    "/health",        # Exact match
+    "/metrics",       # Exact match
+    "/docs/*",        # Wildcard: matches /docs/swagger, /docs/openapi, etc.
+    "/admin/*",       # Wildcard: matches all admin endpoints
+    "/api/v1.0/*"     # Exact version match (won't match /api/v1x0/*)
 ]
 
 # Save detailed JSON report
@@ -155,8 +158,8 @@ pytest --api-cov-report --api-cov-show-uncovered-endpoints=false
 # Save JSON report
 pytest --api-cov-report --api-cov-report-path=api_coverage.json
 
-# Exclude specific endpoints
-pytest --api-cov-report --api-cov-exclusion-patterns="/health" --api-cov-exclusion-patterns="/docs"
+# Exclude specific endpoints (supports wildcards)
+pytest --api-cov-report --api-cov-exclusion-patterns="/health" --api-cov-exclusion-patterns="/docs/*"
 
 # Verbose logging (shows discovery process)
 pytest --api-cov-report -v
@@ -167,9 +170,9 @@ pytest --api-cov-report -vv
 
 ## Framework Support
 
-### FastAPI
+Works automatically with FastAPI and Flask applications.
 
-Works automatically with FastAPI applications. The plugin detects FastAPI apps and uses the TestClient for coverage tracking.
+### FastAPI
 
 ```python
 from fastapi import FastAPI
@@ -188,8 +191,6 @@ def test_read_item(client):
 ```
 
 ### Flask
-
-Works automatically with Flask applications. The plugin detects Flask apps and uses the test client for coverage tracking.
 
 ```python
 from flask import Flask

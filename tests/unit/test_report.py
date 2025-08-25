@@ -26,18 +26,15 @@ class TestEndpointCategorization:
 
     def test_categorise_endpoints(self):
         """Test the main categorization logic."""
-        discovered = ["/users", "/users/{user_id}", "/health", "/admin/dashboard"]
+        discovered = ["/users", "/users/{user_id}", "/health", "/admin/dashboard", "/a/b/c", "/a/b/d/c"]
         called = {"/users", "/users/123", "/admin/dashboard"}
-        excluded = ["/admin/*"]
+        excluded = ["*admin*", "/a/*/c"]
 
         covered, uncovered, excluded_out = categorise_endpoints(discovered, called, excluded)
 
-        assert set(covered) == {"/users", "/users/{user_id}", "/admin/dashboard"}
+        assert set(covered) == {"/users", "/users/{user_id}"}
         assert set(uncovered) == {"/health"}
-        # Note: Your current exclusion is a simple string match, not glob.
-        # To match /admin/dashboard, the pattern would need to be "/admin/dashboard"
-        # Or the logic changed to support globs. Assuming simple string matching for now.
-        assert excluded_out == []
+        assert set(excluded_out) == {"/admin/dashboard", "/a/b/c", "/a/b/d/c"}
 
     def test_categorise_with_no_exclusions(self):
         """Ensure it works correctly with no exclusion patterns."""
@@ -59,16 +56,27 @@ class TestEndpointCategorization:
         assert set(uncovered) == {"/internal"}
         assert set(excluded_out) == {"/admin"}
 
-    def test_categorise_with_regex_exclusions(self):
-        """Test categorization with regex exclusion patterns."""
+    def test_categorise_with_wildcard_exclusions(self):
+        """Test categorization with wildcard exclusion patterns."""
         discovered = ["/public", "/admin/users", "/admin/settings", "/internal"]
         called = {"/public", "/admin/users"}
-        excluded = ["/admin/users", "/admin/settings"]  # Use exact matches since regex escapes special chars
+        excluded = ["/admin/*"]  # Wildcard pattern
 
         covered, uncovered, excluded_out = categorise_endpoints(discovered, called, excluded)
         assert set(covered) == {"/public"}
         assert set(uncovered) == {"/internal"}
         assert set(excluded_out) == {"/admin/users", "/admin/settings"}
+
+    def test_categorise_with_literal_dot_patterns(self):
+        """Test that dots in patterns are treated literally, not as regex wildcards."""
+        discovered = ["/api/v1.0/users", "/api/v1x0/users", "/api/v2.0/users"]
+        called = set()  # No endpoints called
+        excluded = ["/api/v1.0/*"]  # Should match v1.0 but NOT v1x0
+
+        covered, uncovered, excluded_out = categorise_endpoints(discovered, called, excluded)
+        assert set(covered) == set()
+        assert set(uncovered) == {"/api/v1x0/users", "/api/v2.0/users"}  # v1x0 should NOT be excluded
+        assert set(excluded_out) == {"/api/v1.0/users"}  # Only exact v1.0 match
 
 
 class TestCoverageCalculationAndReporting:
@@ -154,13 +162,17 @@ class TestCoverageCalculationAndReporting:
         error_print = next(c for c in mock_console.print.call_args_list if "No endpoints discovered" in c.args[0])
         assert "No endpoints discovered" in error_print.args[0]
 
+    @pytest.mark.parametrize("force_sugar,expected_symbols", [
+        (True, ["❌", "✅", "🚫"]),      # Unicode symbols
+        (False, ["[X]", "[.]", "[-]"]),  # ASCII symbols
+    ])
     @patch("pytest_api_cov.report.Console")
-    def test_generate_report_with_force_sugar(self, mock_console_cls):
-        """Test report generation with force_sugar enabled."""
+    def test_generate_report_sugar_symbols(self, mock_console_cls, force_sugar, expected_symbols):
+        """Test report generation with different symbol configurations."""
         mock_console = mock_console_cls.return_value
         config = ApiCoverageReportConfig.model_validate(
             {
-                "force_sugar": True,
+                "force_sugar": force_sugar,
                 "show_uncovered_endpoints": True,
                 "show_covered_endpoints": True,
                 "show_excluded_endpoints": True,
@@ -172,37 +184,12 @@ class TestCoverageCalculationAndReporting:
         status = generate_pytest_api_cov_report(config, called, discovered)
 
         assert status == 0
-        # Check that sugar symbols are used
-        sugar_prints = [
-            c for c in mock_console.print.call_args_list if "❌" in c.args[0] or "✅" in c.args[0] or "🚫" in c.args[0]
+        # Check that appropriate symbols are used
+        symbol_prints = [
+            c for c in mock_console.print.call_args_list 
+            if any(symbol in c.args[0] for symbol in expected_symbols)
         ]
-        assert len(sugar_prints) > 0
-
-    @patch("pytest_api_cov.report.Console")
-    def test_generate_report_without_force_sugar(self, mock_console_cls):
-        """Test report generation without force_sugar (default behavior)."""
-        mock_console = mock_console_cls.return_value
-        config = ApiCoverageReportConfig.model_validate(
-            {
-                "force_sugar": False,
-                "show_uncovered_endpoints": True,
-                "show_covered_endpoints": True,
-                "show_excluded_endpoints": True,
-            }
-        )
-        discovered = ["/a", "/b"]
-        called = {"/a"}
-
-        status = generate_pytest_api_cov_report(config, called, discovered)
-
-        assert status == 0
-        # Check that default symbols are used
-        default_prints = [
-            c
-            for c in mock_console.print.call_args_list
-            if "[X]" in c.args[0] or "[.]" in c.args[0] or "[-]" in c.args[0]
-        ]
-        assert len(default_prints) > 0
+        assert len(symbol_prints) > 0
 
 
 class TestPrintEndpoints:

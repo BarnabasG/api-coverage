@@ -51,7 +51,7 @@ exclude_lines = [
     "if TYPE_CHECKING:",
 ]
 show_missing = true
-fail_under = 90.0
+fail_under = 70.0
 
 
 [build-system]

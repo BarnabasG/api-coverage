@@ -103,48 +103,22 @@ class TestConfigLoading:
         config = read_session_config(mock_session_config)
         assert "fail_under" not in config
 
-    def test_supports_unicode_not_tty(self):
-        """Test supports_unicode when stdout is not a tty."""
-        with patch("sys.stdout.isatty", return_value=False):
-            assert supports_unicode() is False
-
-    def test_supports_unicode_utf8_encoding(self):
-        """Test supports_unicode with UTF-8 encoding."""
+    @pytest.mark.parametrize("is_tty,encoding,stdout_bool,expected", [
+        (False, "utf-8", True, False),  # Not a tty
+        (True, "utf-8", True, True),    # UTF-8 encoding
+        (True, "UTF8", True, True),     # UTF8 encoding (no dash)
+        (True, "ascii", True, False),   # Non-UTF encoding
+        (True, "utf-8", False, False),  # Falsy stdout
+    ])
+    def test_supports_unicode(self, is_tty, encoding, stdout_bool, expected):
+        """Test supports_unicode with various configurations."""
         mock_stdout = Mock()
-        mock_stdout.isatty.return_value = True
-        mock_stdout.encoding = "utf-8"
+        mock_stdout.isatty.return_value = is_tty
+        mock_stdout.encoding = encoding
+        mock_stdout.__bool__ = Mock(return_value=stdout_bool)
         
         with patch("sys.stdout", mock_stdout):
-            assert supports_unicode() is True
-
-    def test_supports_unicode_utf8_encoding_uppercase(self):
-        """Test supports_unicode with UTF8 encoding (no dash)."""
-        mock_stdout = Mock()
-        mock_stdout.isatty.return_value = True
-        mock_stdout.encoding = "UTF8"
-        
-        with patch("sys.stdout", mock_stdout):
-            assert supports_unicode() is True
-
-    def test_supports_unicode_non_utf_encoding(self):
-        """Test supports_unicode with non-UTF encoding."""
-        mock_stdout = Mock()
-        mock_stdout.isatty.return_value = True
-        mock_stdout.encoding = "ascii"
-        
-        with patch("sys.stdout", mock_stdout):
-            assert supports_unicode() is False
-
-    def test_supports_unicode_none_stdout(self):
-        """Test supports_unicode when stdout is falsy."""
-        # Create a mock that returns None for isatty() but is still falsy when checked with bool()
-        mock_stdout = Mock()
-        mock_stdout.isatty.return_value = True  # Passes first check
-        mock_stdout.__bool__ = Mock(return_value=False)  # Fails bool(sys.stdout) check
-        mock_stdout.encoding = "utf-8"
-        
-        with patch("sys.stdout", mock_stdout):
-            assert supports_unicode() is False
+            assert supports_unicode() == expected
 
 
 class TestConfigMerging:

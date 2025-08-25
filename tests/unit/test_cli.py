@@ -23,53 +23,41 @@ class TestDetectFrameworkAndApp:
             result = detect_framework_and_app()
             assert result is None
 
-    def test_fastapi_app_detected(self):
-        """Test detection of FastAPI app."""
-        app_content = """
-from fastapi import FastAPI
+    @pytest.mark.parametrize("framework,import_stmt,var_name,expected_file,expected_var", [
+        ("FastAPI", "from fastapi import FastAPI", "app", "app.py", "app"),
+        ("Flask", "from flask import Flask", "application", "app.py", "application"),
+        ("FastAPI", "import fastapi\nfrom fastapi import FastAPI", "main", "main.py", "main"),
+    ])
+    def test_framework_app_detection(self, framework, import_stmt, var_name, expected_file, expected_var):
+        """Test detection of various framework apps."""
+        if framework == "FastAPI":
+            app_content = f"""
+{import_stmt}
 
-app = FastAPI()
+{var_name} = FastAPI()
 
-@app.get("/")
+@{var_name}.get("/")
 def root():
-    return {"message": "hello"}
+    return {{"message": "hello"}}
 """
-        with patch('os.path.exists', return_value=True), \
-             patch('builtins.open', mock_open(read_data=app_content)):
-            result = detect_framework_and_app()
-            assert result == ("FastAPI", "app.py", "app")
+        else:  # Flask
+            app_content = f"""
+{import_stmt}
 
-    def test_flask_app_detected(self):
-        """Test detection of Flask app."""
-        app_content = """
-from flask import Flask
+{var_name} = Flask(__name__)
 
-application = Flask(__name__)
-
-@application.route("/")
+@{var_name}.route("/")
 def root():
     return "hello"
 """
-        with patch('os.path.exists', return_value=True), \
-             patch('builtins.open', mock_open(read_data=app_content)):
-            result = detect_framework_and_app()
-            assert result == ("Flask", "app.py", "application")
-
-    def test_main_py_with_fastapi(self):
-        """Test detection in main.py file."""
-        app_content = """
-import fastapi
-from fastapi import FastAPI
-
-main = FastAPI()
-"""
+        
         def mock_exists(path):
-            return path == "main.py"
+            return path == expected_file
         
         with patch('os.path.exists', side_effect=mock_exists), \
              patch('builtins.open', mock_open(read_data=app_content)):
             result = detect_framework_and_app()
-            assert result == ("FastAPI", "main.py", "main")
+            assert result == (framework, expected_file, expected_var)
 
     def test_no_framework_detected(self):
         """Test when file exists but no framework imports found."""

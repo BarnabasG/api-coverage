@@ -1,15 +1,70 @@
 # tests/unit/test_plugin.py
 from collections import defaultdict
 from unittest.mock import Mock, patch
+import pytest
 
 from pytest_api_cov.models import SessionData
 from pytest_api_cov.plugin import (
     DeferXdistPlugin,
+    is_supported_framework,
+    auto_discover_app,
+    get_helpful_error_message,
     pytest_addoption,
     pytest_configure,
     pytest_sessionfinish,
     pytest_sessionstart,
 )
+
+
+class TestSupportedFramework:
+    """Tests for framework detection utility functions."""
+
+    def test_is_supported_framework_none(self):
+        """Test framework detection with None."""
+        assert is_supported_framework(None) is False
+
+    def test_is_supported_framework_flask(self):
+        """Test framework detection with Flask app."""
+        mock_app = Mock()
+        mock_app.__class__.__name__ = "Flask"
+        mock_app.__class__.__module__ = "flask.app"
+        assert is_supported_framework(mock_app) is True
+
+    def test_is_supported_framework_fastapi(self):
+        """Test framework detection with FastAPI app."""
+        mock_app = Mock()
+        mock_app.__class__.__name__ = "FastAPI"
+        mock_app.__class__.__module__ = "fastapi.applications"
+        assert is_supported_framework(mock_app) is True
+
+    def test_is_supported_framework_unsupported(self):
+        """Test framework detection with unsupported framework."""
+        mock_app = Mock()
+        mock_app.__class__.__name__ = "Django"
+        mock_app.__class__.__module__ = "django.core"
+        assert is_supported_framework(mock_app) is False
+
+    @patch('os.path.exists', return_value=False)
+    def test_auto_discover_app_no_files(self, mock_exists):
+        """Test auto-discovery when no app files exist."""
+        result = auto_discover_app()
+        assert result is None
+
+    @patch('os.path.exists', return_value=True)
+    @patch('importlib.util.spec_from_file_location')
+    @patch('importlib.util.module_from_spec')
+    def test_auto_discover_app_import_error(self, mock_module_from_spec, mock_spec_from_file, mock_exists):
+        """Test auto-discovery when import fails."""
+        mock_spec_from_file.return_value = None
+        result = auto_discover_app()
+        assert result is None
+
+    def test_get_helpful_error_message(self):
+        """Test that helpful error message is generated."""
+        message = get_helpful_error_message()
+        assert "No API app found" in message
+        assert "Quick Setup Options" in message
+        assert "pytest-api-cov init" in message
 
 
 class TestPluginHooks:
@@ -256,6 +311,42 @@ class TestPluginHooks:
 
         # Should still register xdist plugin if available, but no logging setup
         mock_config.pluginmanager.register.assert_called_once()
+
+    @pytest.mark.parametrize("verbose_level,expected_log_level", [
+        (0, "WARNING"),  # normal run
+        (1, "INFO"),     # -v
+        (2, "DEBUG"),    # -vv or more
+        (3, "DEBUG"),    # -vvv
+    ])
+    @patch('pytest_api_cov.plugin.logger')
+    def test_pytest_configure_logging_levels(self, mock_logger, verbose_level, expected_log_level):
+        """Test that logging levels are set correctly based on verbosity."""
+        import logging
+        
+        mock_config = Mock()
+        mock_config.getoption.return_value = True  # --api-cov-report enabled
+        mock_config.option.verbose = verbose_level
+        mock_config.pluginmanager.hasplugin.return_value = False
+        mock_logger.handlers = []  # No existing handlers
+        
+        pytest_configure(mock_config)
+        
+        expected_level = getattr(logging, expected_log_level)
+        mock_logger.setLevel.assert_called_with(expected_level)
+
+    @patch('pytest_api_cov.plugin.logger')
+    def test_pytest_configure_existing_handler(self, mock_logger):
+        """Test that no new handler is added if one already exists."""
+        mock_config = Mock()
+        mock_config.getoption.return_value = True
+        mock_config.option.verbose = 1
+        mock_config.pluginmanager.hasplugin.return_value = False
+        mock_logger.handlers = [Mock()]  # Handler already exists
+        
+        pytest_configure(mock_config)
+        
+        # Should not add new handler
+        mock_logger.addHandler.assert_not_called()
 
 
 class TestDeferXdistPlugin:

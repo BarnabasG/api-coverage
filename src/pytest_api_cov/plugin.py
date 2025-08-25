@@ -244,6 +244,13 @@ def pytest_sessionfinish(session: pytest.Session) -> None:
             if session.exitstatus == 0:
                 session.exitstatus = status
 
+        if hasattr(session, "api_coverage_data"):
+            delattr(session, "api_coverage_data")
+
+        # Clear any module-level caches
+        if hasattr(session.config, "worker_api_call_recorder"):
+            delattr(session.config, "worker_api_call_recorder")
+
 
 class DeferXdistPlugin:
     """Simple class to defer pytest-xdist hook until we know it is installed."""

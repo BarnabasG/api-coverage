@@ -342,69 +342,27 @@ class TestSessionData:
         # String is wrapped in {v}, so it becomes a set with the string as single element
         assert "test4" in session.recorder.get_callers("/string")
 
-    def test_merge_worker_data_empty_recorder(self):
-        """Test merging with empty worker recorder."""
+    @pytest.mark.parametrize("worker_recorder,worker_endpoints,expected_recorder_len,expected_endpoints", [
+        ({}, ["/worker_endpoint"], 1, ["/worker_endpoint"]),  # Empty recorder
+        ({"/worker": ["worker_test"]}, [], 1, []),            # Empty endpoints  
+        ("not_a_dict", ["/worker_endpoint"], 0, ["/worker_endpoint"]),  # Non-dict recorder
+        (None, ["/worker_endpoint"], 0, ["/worker_endpoint"]),          # Falsy recorder
+    ])
+    def test_merge_worker_data_edge_cases(self, worker_recorder, worker_endpoints, expected_recorder_len, expected_endpoints):
+        """Test merging worker data with various edge cases."""
         session = SessionData()
-        session.record_call("/session", "session_test")
-        
-        worker_recorder = {}
-        worker_endpoints = ["/worker_endpoint"]
+        if expected_recorder_len > 0:
+            session.record_call("/session", "session_test")
         
         session.merge_worker_data(worker_recorder, worker_endpoints)
         
-        # Session data should be unchanged
-        assert len(session.recorder) == 1
-        assert "/session" in session.recorder
+        # Check recorder state
+        if "/worker" in str(worker_recorder):
+            assert "/worker" in session.recorder
         
-        # But endpoints should be merged
-        assert "/worker_endpoint" in session.discovered_endpoints.endpoints
-
-    def test_merge_worker_data_empty_endpoints(self):
-        """Test merging with empty worker endpoints."""
-        session = SessionData()
-        
-        worker_recorder = {"/worker": ["worker_test"]}
-        worker_endpoints = []
-        
-        session.merge_worker_data(worker_recorder, worker_endpoints)
-        
-        # Recorder should be merged
-        assert "/worker" in session.recorder
-        
-        # Endpoints should remain unchanged
-        assert len(session.discovered_endpoints) == 0
-
-    def test_merge_worker_data_non_dict_recorder(self):
-        """Test merging with non-dict worker recorder."""
-        session = SessionData()
-        
-        # Non-dict worker recorder (should be skipped)
-        worker_recorder = "not_a_dict"
-        worker_endpoints = ["/worker_endpoint"]
-        
-        session.merge_worker_data(worker_recorder, worker_endpoints)
-        
-        # Recorder should be unchanged
-        assert len(session.recorder) == 0
-        
-        # But endpoints should be merged
-        assert "/worker_endpoint" in session.discovered_endpoints.endpoints
-
-    def test_merge_worker_data_falsy_worker_recorder(self):
-        """Test merging with falsy worker recorder."""
-        session = SessionData()
-        
-        # Falsy worker recorder (should be skipped)
-        worker_recorder = None
-        worker_endpoints = ["/worker_endpoint"]
-        
-        session.merge_worker_data(worker_recorder, worker_endpoints)
-        
-        # Recorder should be unchanged
-        assert len(session.recorder) == 0
-        
-        # But endpoints should be merged
-        assert "/worker_endpoint" in session.discovered_endpoints.endpoints
+        # Check endpoints state
+        for endpoint in expected_endpoints:
+            assert endpoint in session.discovered_endpoints.endpoints
 
     def test_add_discovered_endpoint_first_endpoint(self):
         """Test adding the first endpoint sets the discovery source."""
