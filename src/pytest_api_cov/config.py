@@ -1,4 +1,4 @@
-"""src/pytest_api_cov/config.py: Handles the configuration for the API coverage report."""
+"""Configuration handling for the API coverage report."""
 
 import sys
 from typing import Any, Dict, List, Optional
@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ApiCoverageReportConfig(BaseModel):
-    """A Pydantic model for all API coverage configuration."""
+    """Configuration model for API coverage reporting."""
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -33,7 +33,7 @@ def read_toml_config() -> Dict[str, Any]:
 
 
 def read_session_config(session_config: Any) -> Dict[str, Any]:
-    """Read configuration from the pytest session config (command-line flags)."""
+    """Read configuration from pytest session config (command-line flags)."""
     cli_options = {
         "api-cov-fail-under": "fail_under",
         "api-cov-show-uncovered-endpoints": "show_uncovered_endpoints",
@@ -47,7 +47,6 @@ def read_session_config(session_config: Any) -> Dict[str, Any]:
     config = {}
     for opt, key in cli_options.items():
         value = session_config.getoption(f"--{opt}")
-        # We only want to include options that were actually provided or are booleans
         if value is not None and value != [] and value is not False:
             config[key] = value
     return config
@@ -68,10 +67,8 @@ def get_pytest_api_cov_report_config(session_config: Any) -> ApiCoverageReportCo
     toml_config = read_toml_config()
     cli_config = read_session_config(session_config)
 
-    # Start with defaults, then apply TOML, then apply CLI args
     final_config = {**toml_config, **cli_config}
 
-    # Set force_sugar based on environment if not explicitly set
     if final_config.get("force_sugar_disabled"):
         final_config["force_sugar"] = False
     elif "force_sugar" not in final_config:

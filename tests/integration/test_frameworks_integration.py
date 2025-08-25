@@ -1,4 +1,5 @@
-# tests/integration/test_frameworks_integration.py
+"""Integration tests for framework adapters."""
+
 import pytest
 
 from pytest_api_cov.frameworks import FastAPIAdapter, FlaskAdapter
@@ -29,17 +30,14 @@ class TestFlaskIntegration:
 
             adapter = FlaskAdapter(app)
 
-            # Test endpoint discovery
             endpoints = adapter.get_endpoints()
             assert "/" in endpoints
             assert "/users/<user_id>" in endpoints
             assert "/items" in endpoints
 
-            # Test tracking functionality
             recorder = ApiCallRecorder()
             client = adapter.get_tracked_client(recorder, "test_flask_tracking")
 
-            # Make requests to test tracking
             response = client.open("/")
             assert response.status_code == 200
 
@@ -49,7 +47,6 @@ class TestFlaskIntegration:
             response = client.open("/items")
             assert response.status_code == 200
 
-            # Verify tracking worked
             assert "/" in recorder
             assert "/users/<user_id>" in recorder
             assert "/items" in recorder
@@ -78,9 +75,7 @@ class TestFlaskIntegration:
             adapter = FlaskAdapter(app)
             endpoints = adapter.get_endpoints()
 
-            # Static endpoint should be excluded
             assert "/static/<path:filename>" not in endpoints
-            # API endpoint should be included
             assert "/api/users" in endpoints
 
         except ImportError:
@@ -111,17 +106,14 @@ class TestFastAPIIntegration:
 
             adapter = FastAPIAdapter(app)
 
-            # Test endpoint discovery
             endpoints = adapter.get_endpoints()
             assert "/" in endpoints
             assert "/users/{user_id}" in endpoints
             assert "/items" in endpoints
 
-            # Test tracking functionality
             recorder = ApiCallRecorder()
             client = adapter.get_tracked_client(recorder, "test_fastapi_tracking")
 
-            # Make requests to test tracking
             response = client.get("/")
             assert response.status_code == 200
 
@@ -131,15 +123,11 @@ class TestFastAPIIntegration:
             response = client.post("/items")
             assert response.status_code == 200
 
-            # Verify tracking worked
             assert "/" in recorder
             assert "/items" in recorder
             assert "test_fastapi_tracking" in recorder.get_callers("/")
             assert "test_fastapi_tracking" in recorder.get_callers("/items")
 
-            # Note: FastAPI tracking stores the actual path, not the route pattern
-            # This is different from Flask which stores the route pattern
-            # We can verify that some user path was tracked
             user_paths = [k for k in recorder.keys() if k.startswith("/users/")]
             assert len(user_paths) > 0
             assert "test_fastapi_tracking" in recorder.get_callers(user_paths[0])
@@ -161,17 +149,13 @@ class TestFastAPIIntegration:
             def api_users():
                 return "API Users"
 
-            # Create a temporary directory for static files
             with tempfile.TemporaryDirectory() as temp_dir:
-                # Add static files (this creates non-APIRoute objects)
                 app.mount("/static", StaticFiles(directory=temp_dir), name="static")
 
                 adapter = FastAPIAdapter(app)
                 endpoints = adapter.get_endpoints()
 
-                # Only APIRoute endpoints should be included
                 assert "/api/users" in endpoints
-                # Static routes should be excluded
                 assert "/static" not in endpoints
 
         except ImportError:

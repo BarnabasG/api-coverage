@@ -1,4 +1,4 @@
-"""src/pytest_api_cov/pytest_flags.py"""
+"""pytest flag configuration for API coverage."""
 
 from typing import TYPE_CHECKING
 

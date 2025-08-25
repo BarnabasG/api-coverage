@@ -1,4 +1,4 @@
-"""src/pytest_api_cov/plugin.py"""
+"""pytest plugin for API coverage tracking."""
 
 import importlib
 import importlib.util
@@ -32,7 +32,6 @@ def auto_discover_app() -> Optional[Any]:
     """Automatically discover Flask/FastAPI apps in common locations."""
     logger.debug("> Auto-discovering app in common locations...")
 
-    # Common file patterns and variable names to check
     common_patterns = [
         ("app.py", ["app", "application", "main"]),
         ("main.py", ["app", "application", "main"]),
@@ -45,14 +44,12 @@ def auto_discover_app() -> Optional[Any]:
         if os.path.exists(filename):
             logger.debug(f"> Found {filename}, checking for app variables...")
             try:
-                # Import the module
-                module_name = filename[:-3]  # Remove .py extension
+                module_name = filename[:-3]  # .py extension
                 spec = importlib.util.spec_from_file_location(module_name, filename)
                 if spec and spec.loader:
                     module = importlib.util.module_from_spec(spec)
                     spec.loader.exec_module(module)
 
-                    # Check each possible app variable name
                     for attr_name in attr_names:
                         if hasattr(module, attr_name):
                             app = getattr(module, attr_name)
@@ -112,22 +109,18 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 def pytest_configure(config: pytest.Config) -> None:
     """Configure the pytest session and logging."""
-    # Configure logging based on verbosity level
     if config.getoption("--api-cov-report"):
         verbosity = config.option.verbose
 
-        # Set up logging level based on pytest verbosity
         if verbosity >= 2:  # -vv or more
             log_level = logging.DEBUG
         elif verbosity >= 1:  # -v
             log_level = logging.INFO
-        else:  # normal run
+        else:
             log_level = logging.WARNING
 
-        # Configure the logger
         logger.setLevel(log_level)
 
-        # Only add handler if we don't already have one
         if not logger.handlers:
             handler = logging.StreamHandler()
             handler.setLevel(log_level)
@@ -137,7 +130,6 @@ def pytest_configure(config: pytest.Config) -> None:
 
         logger.info("Initializing API coverage plugin...")
 
-    # Register xdist plugin if available
     if config.pluginmanager.hasplugin("xdist"):
         config.pluginmanager.register(DeferXdistPlugin(), "defer_xdist_plugin")
 
@@ -157,11 +149,9 @@ def client(request: pytest.FixtureRequest) -> Any:
     """
     session = request.node.session
 
-    # Only proceed if API coverage is enabled
     if not session.config.getoption("--api-cov-report"):
         pytest.skip("API coverage not enabled. Use --api-cov-report flag.")
 
-    # Try to get app from existing fixture first
     app = None
     try:
         app = request.getfixturevalue("app")
@@ -170,13 +160,11 @@ def client(request: pytest.FixtureRequest) -> Any:
         logger.debug("> No 'app' fixture found, trying auto-discovery...")
         app = auto_discover_app()
 
-    # If still no app found, show helpful error
     if app is None:
         helpful_msg = get_helpful_error_message()
         print(helpful_msg)
         pytest.skip("No API app found. See error message above for setup guidance.")
 
-    # Validate the app is supported
     if not is_supported_framework(app):
         pytest.skip(f"Unsupported framework: {type(app).__name__}. pytest-api-coverage supports Flask and FastAPI.")
 
@@ -189,7 +177,6 @@ def client(request: pytest.FixtureRequest) -> Any:
     if coverage_data is None:
         pytest.skip("API coverage data not initialized. This should not happen.")
 
-    # Discover endpoints on the first run of this fixture.
     if not coverage_data.discovered_endpoints.endpoints:
         try:
             endpoints = adapter.get_endpoints()
@@ -215,7 +202,6 @@ def pytest_sessionfinish(session: pytest.Session) -> None:
 
         logger.debug(f"> pytest-api-coverage: Generating report for {len(coverage_data.recorder)} recorded endpoints.")
         if hasattr(session.config, "workeroutput"):
-            # Send data to master process in serializable format
             serializable_recorder = coverage_data.recorder.to_serializable()
             session.config.workeroutput["api_call_recorder"] = serializable_recorder
             session.config.workeroutput["discovered_endpoints"] = coverage_data.discovered_endpoints.endpoints
@@ -223,7 +209,6 @@ def pytest_sessionfinish(session: pytest.Session) -> None:
         else:
             logger.debug("> No workeroutput found, generating report for master data.")
 
-            # Get worker data from config if available
             worker_recorder_data = getattr(session.config, "worker_api_call_recorder", {})
             worker_endpoints = getattr(session.config, "worker_discovered_endpoints", [])
 
@@ -247,7 +232,6 @@ def pytest_sessionfinish(session: pytest.Session) -> None:
         if hasattr(session, "api_coverage_data"):
             delattr(session, "api_coverage_data")
 
-        # Clear any module-level caches
         if hasattr(session.config, "worker_api_call_recorder"):
             delattr(session.config, "worker_api_call_recorder")
 
@@ -281,7 +265,6 @@ class DeferXdistPlugin:
             node.config.worker_api_call_recorder = current
             logger.debug(f"> Updated current data: {current}")
 
-        # Merge discovered endpoints (take the first non-empty list we get)
         if discovered_endpoints and not getattr(node.config, "worker_discovered_endpoints", []):
             node.config.worker_discovered_endpoints = discovered_endpoints
             logger.debug(f"> Set discovered endpoints from worker: {discovered_endpoints}")

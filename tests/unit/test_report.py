@@ -1,4 +1,5 @@
-# tests/test_report.py
+"""Tests for report generation."""
+
 from unittest.mock import patch
 
 import pytest
@@ -60,7 +61,7 @@ class TestEndpointCategorization:
         """Test categorization with wildcard exclusion patterns."""
         discovered = ["/public", "/admin/users", "/admin/settings", "/internal"]
         called = {"/public", "/admin/users"}
-        excluded = ["/admin/*"]  # Wildcard pattern
+        excluded = ["/admin/*"]
 
         covered, uncovered, excluded_out = categorise_endpoints(discovered, called, excluded)
         assert set(covered) == {"/public"}
@@ -70,13 +71,13 @@ class TestEndpointCategorization:
     def test_categorise_with_literal_dot_patterns(self):
         """Test that dots in patterns are treated literally, not as regex wildcards."""
         discovered = ["/api/v1.0/users", "/api/v1x0/users", "/api/v2.0/users"]
-        called = set()  # No endpoints called
-        excluded = ["/api/v1.0/*"]  # Should match v1.0 but NOT v1x0
+        called = set()
+        excluded = ["/api/v1.0/*"]
 
         covered, uncovered, excluded_out = categorise_endpoints(discovered, called, excluded)
         assert set(covered) == set()
-        assert set(uncovered) == {"/api/v1x0/users", "/api/v2.0/users"}  # v1x0 should NOT be excluded
-        assert set(excluded_out) == {"/api/v1.0/users"}  # Only exact v1.0 match
+        assert set(uncovered) == {"/api/v1x0/users", "/api/v2.0/users"}
+        assert set(excluded_out) == {"/api/v1.0/users"}
 
 
 class TestCoverageCalculationAndReporting:
@@ -117,7 +118,6 @@ class TestCoverageCalculationAndReporting:
         status = generate_pytest_api_cov_report(config, called, discovered)
 
         assert status == 0  # Success
-        # Check that the final print contains "SUCCESS"
         success_print = next(c for c in mock_console.print.call_args_list if "SUCCESS" in c.args[0])
         assert "Coverage of 75.0%" in success_print.args[0]
 
@@ -158,14 +158,16 @@ class TestCoverageCalculationAndReporting:
         status = generate_pytest_api_cov_report(config, called, discovered)
 
         assert status == 0
-        # Check that the error message is printed
         error_print = next(c for c in mock_console.print.call_args_list if "No endpoints discovered" in c.args[0])
         assert "No endpoints discovered" in error_print.args[0]
 
-    @pytest.mark.parametrize("force_sugar,expected_symbols", [
-        (True, ["❌", "✅", "🚫"]),      # Unicode symbols
-        (False, ["[X]", "[.]", "[-]"]),  # ASCII symbols
-    ])
+    @pytest.mark.parametrize(
+        "force_sugar,expected_symbols",
+        [
+            (True, ["❌", "✅", "🚫"]),  # Unicode symbols
+            (False, ["[X]", "[.]", "[-]"]),  # ASCII symbols
+        ],
+    )
     @patch("pytest_api_cov.report.Console")
     def test_generate_report_sugar_symbols(self, mock_console_cls, force_sugar, expected_symbols):
         """Test report generation with different symbol configurations."""
@@ -184,10 +186,8 @@ class TestCoverageCalculationAndReporting:
         status = generate_pytest_api_cov_report(config, called, discovered)
 
         assert status == 0
-        # Check that appropriate symbols are used
         symbol_prints = [
-            c for c in mock_console.print.call_args_list 
-            if any(symbol in c.args[0] for symbol in expected_symbols)
+            c for c in mock_console.print.call_args_list if any(symbol in c.args[0] for symbol in expected_symbols)
         ]
         assert len(symbol_prints) > 0
 
@@ -203,7 +203,6 @@ class TestPrintEndpoints:
 
         print_endpoints(mock_console, "Test Label", endpoints, "✓", "green")
 
-        # Should print the label and each endpoint
         assert mock_console.print.call_count == 3  # Label + 2 endpoints
         label_call = mock_console.print.call_args_list[0]
         assert "Test Label" in label_call.args[0]
@@ -216,7 +215,6 @@ class TestPrintEndpoints:
 
         print_endpoints(mock_console, "Test Label", endpoints, "✓", "green")
 
-        # Should not print anything when no endpoints
         mock_console.print.assert_not_called()
 
 
@@ -232,9 +230,7 @@ class TestWriteReportFile:
 
         write_report_file(report_data, report_path)
 
-        # Verify file operations
         mock_open.assert_called_once()
-        # The path is resolved to absolute path, so just check the filename
         call_args = mock_open.call_args[0]
         assert call_args[0].name == "test_report.json"
         assert call_args[1] == "w"

@@ -1,14 +1,16 @@
-# tests/unit/test_plugin.py
+"""Tests for the pytest plugin."""
+
 from collections import defaultdict
 from unittest.mock import Mock, patch
+
 import pytest
 
 from pytest_api_cov.models import SessionData
 from pytest_api_cov.plugin import (
     DeferXdistPlugin,
-    is_supported_framework,
     auto_discover_app,
     get_helpful_error_message,
+    is_supported_framework,
     pytest_addoption,
     pytest_configure,
     pytest_sessionfinish,
@@ -44,15 +46,15 @@ class TestSupportedFramework:
         mock_app.__class__.__module__ = "django.core"
         assert is_supported_framework(mock_app) is False
 
-    @patch('os.path.exists', return_value=False)
+    @patch("os.path.exists", return_value=False)
     def test_auto_discover_app_no_files(self, mock_exists):
         """Test auto-discovery when no app files exist."""
         result = auto_discover_app()
         assert result is None
 
-    @patch('os.path.exists', return_value=True)
-    @patch('importlib.util.spec_from_file_location')
-    @patch('importlib.util.module_from_spec')
+    @patch("os.path.exists", return_value=True)
+    @patch("importlib.util.spec_from_file_location")
+    @patch("importlib.util.module_from_spec")
     def test_auto_discover_app_import_error(self, mock_module_from_spec, mock_spec_from_file, mock_exists):
         """Test auto-discovery when import fails."""
         mock_spec_from_file.return_value = None
@@ -74,10 +76,8 @@ class TestPluginHooks:
         """Test that pytest_addoption adds the required flags."""
         mock_parser = Mock()
 
-        # Test that the function exists and can be called
         pytest_addoption(mock_parser)
 
-        # Since the plugin is already imported, we just verify the function exists
         assert callable(pytest_addoption)
 
     def test_pytest_sessionstart_with_api_cov_report(self):
@@ -89,14 +89,12 @@ class TestPluginHooks:
 
         assert hasattr(mock_session, "api_coverage_data")
         assert mock_session.api_coverage_data is not None
-        # Verify it's a SessionData instance with proper structure
         assert hasattr(mock_session.api_coverage_data, "recorder")
         assert hasattr(mock_session.api_coverage_data, "discovered_endpoints")
 
     def test_pytest_sessionstart_without_api_cov_report(self):
         """Test pytest_sessionstart when --api-cov-report is disabled."""
 
-        # Use a simple object instead of Mock to avoid auto-attribute creation
         class SimpleSession:
             def __init__(self):
                 self.config = Mock()
@@ -106,7 +104,6 @@ class TestPluginHooks:
 
         pytest_sessionstart(mock_session)
 
-        # Should not set any attributes when flag is False
         assert not hasattr(mock_session, "api_coverage_data")
 
     @patch("pytest_api_cov.plugin.get_pytest_api_cov_report_config")
@@ -116,16 +113,13 @@ class TestPluginHooks:
         mock_session = Mock()
         mock_session.config.getoption.side_effect = lambda flag: flag == "--api-cov-report"
 
-        # Create real SessionData with test data
         coverage_data = SessionData()
         coverage_data.recorder.record_call("/test", "test_func")
         coverage_data.discovered_endpoints.endpoints = ["/test"]
         mock_session.api_coverage_data = coverage_data
         mock_session.exitstatus = 0
 
-        # Remove workeroutput attribute to force the else path
         del mock_session.config.workeroutput
-        # Set specific defaults for worker data
         mock_session.config.worker_api_call_recorder = {}
         mock_session.config.worker_discovered_endpoints = []
 
@@ -142,7 +136,6 @@ class TestPluginHooks:
     def test_pytest_sessionfinish_without_api_cov_report(self):
         """Test pytest_sessionfinish when --api-cov-report is disabled."""
 
-        # Use a simple object instead of Mock to avoid auto-attribute creation
         class SimpleSession:
             def __init__(self):
                 self.config = Mock()
@@ -152,7 +145,6 @@ class TestPluginHooks:
 
         pytest_sessionfinish(mock_session)
 
-        # Should not call any coverage functions
         assert not hasattr(mock_session, "api_coverage_data")
 
     @patch("pytest_api_cov.config.get_pytest_api_cov_report_config")
@@ -162,14 +154,12 @@ class TestPluginHooks:
         mock_session = Mock()
         mock_session.config.getoption.return_value = True
 
-        # Create real SessionData with test data
         coverage_data = SessionData()
         coverage_data.recorder.record_call("/test", "test_func")
         coverage_data.discovered_endpoints.endpoints = ["/test"]
         mock_session.api_coverage_data = coverage_data
         mock_session.exitstatus = 0
 
-        # Use a real dict for workeroutput to support item assignment
         workeroutput = {"api_call_recorder": {"/worker_test": ["worker_test"]}}
         mock_session.config.workeroutput = workeroutput
 
@@ -179,7 +169,6 @@ class TestPluginHooks:
 
         pytest_sessionfinish(mock_session)
 
-        # Should serialize the recorder for workers
         assert workeroutput["api_call_recorder"] == {"/test": ["test_func"]}
         assert workeroutput["discovered_endpoints"] == ["/test"]
 
@@ -190,19 +179,16 @@ class TestPluginHooks:
         mock_session = Mock()
         mock_session.config.getoption.side_effect = lambda flag: flag == "--api-cov-report"
 
-        # Create real SessionData with test data
         coverage_data = SessionData()
         coverage_data.recorder.record_call("/test", "test_func")
         coverage_data.discovered_endpoints.endpoints = ["/test"]
         mock_session.api_coverage_data = coverage_data
         mock_session.exitstatus = 0
 
-        # Use a real dict for worker data to support item assignment
         worker_data = {"/worker_test": ["worker_test"]}
         mock_session.config.worker_api_call_recorder = worker_data
         mock_session.config.worker_discovered_endpoints = ["/worker_test"]
 
-        # Remove workeroutput attribute to force the else path
         del mock_session.config.workeroutput
 
         mock_config = Mock()
@@ -212,7 +198,6 @@ class TestPluginHooks:
         pytest_sessionfinish(mock_session)
 
         mock_generate_report.assert_called_once()
-        # Verify that worker data was merged
         call_args = mock_generate_report.call_args
         called_data = call_args[1]["called_data"]
         assert "/test" in called_data
@@ -225,15 +210,12 @@ class TestPluginHooks:
         mock_session = Mock()
         mock_session.config.getoption.side_effect = lambda flag: flag == "--api-cov-report"
 
-        # Create real SessionData with test data
         coverage_data = SessionData()
         coverage_data.recorder.record_call("/test", "test_func")
         coverage_data.discovered_endpoints.endpoints = ["/test"]
         mock_session.api_coverage_data = coverage_data
         mock_session.exitstatus = 0
-        # Set worker data to a custom object (non-dict but still valid)
-        # This should trigger the 'else' branch on line 66
-        # Use a custom object that's not a dict but behaves like defaultdict
+
         from collections import defaultdict
 
         class NonDictWorkerData:
@@ -266,7 +248,6 @@ class TestPluginHooks:
         mock_session.config.worker_api_call_recorder = NonDictWorkerData()
         mock_session.config.worker_discovered_endpoints = []
 
-        # Remove workeroutput attribute to force the else path
         del mock_session.config.workeroutput
 
         mock_config = Mock()
@@ -286,7 +267,7 @@ class TestPluginHooks:
 
         pytest_configure(mock_config)
 
-        # Should register the DeferXdistPlugin
+        # DeferXdistPlugin
         mock_config.pluginmanager.register.assert_called_once()
 
     def test_pytest_configure_without_xdist(self):
@@ -298,7 +279,6 @@ class TestPluginHooks:
 
         pytest_configure(mock_config)
 
-        # Should not register any plugins
         mock_config.pluginmanager.register.assert_not_called()
 
     def test_pytest_configure_without_api_cov_report(self):
@@ -309,43 +289,44 @@ class TestPluginHooks:
 
         pytest_configure(mock_config)
 
-        # Should still register xdist plugin if available, but no logging setup
         mock_config.pluginmanager.register.assert_called_once()
 
-    @pytest.mark.parametrize("verbose_level,expected_log_level", [
-        (0, "WARNING"),  # normal run
-        (1, "INFO"),     # -v
-        (2, "DEBUG"),    # -vv or more
-        (3, "DEBUG"),    # -vvv
-    ])
-    @patch('pytest_api_cov.plugin.logger')
+    @pytest.mark.parametrize(
+        "verbose_level,expected_log_level",
+        [
+            (0, "WARNING"),  # normal run
+            (1, "INFO"),  # -v
+            (2, "DEBUG"),  # -vv or more
+            (3, "DEBUG"),  # -vvv
+        ],
+    )
+    @patch("pytest_api_cov.plugin.logger")
     def test_pytest_configure_logging_levels(self, mock_logger, verbose_level, expected_log_level):
         """Test that logging levels are set correctly based on verbosity."""
         import logging
-        
+
         mock_config = Mock()
         mock_config.getoption.return_value = True  # --api-cov-report enabled
         mock_config.option.verbose = verbose_level
         mock_config.pluginmanager.hasplugin.return_value = False
-        mock_logger.handlers = []  # No existing handlers
-        
+        mock_logger.handlers = []
+
         pytest_configure(mock_config)
-        
+
         expected_level = getattr(logging, expected_log_level)
         mock_logger.setLevel.assert_called_with(expected_level)
 
-    @patch('pytest_api_cov.plugin.logger')
+    @patch("pytest_api_cov.plugin.logger")
     def test_pytest_configure_existing_handler(self, mock_logger):
         """Test that no new handler is added if one already exists."""
         mock_config = Mock()
         mock_config.getoption.return_value = True
         mock_config.option.verbose = 1
         mock_config.pluginmanager.hasplugin.return_value = False
-        mock_logger.handlers = [Mock()]  # Handler already exists
-        
+        mock_logger.handlers = [Mock()]
+
         pytest_configure(mock_config)
-        
-        # Should not add new handler
+
         mock_logger.addHandler.assert_not_called()
 
 
@@ -357,14 +338,12 @@ class TestDeferXdistPlugin:
         mock_node = Mock()
         mock_node.workeroutput = {"api_call_recorder": {"/test": ["test_func"]}}
 
-        # Use a real dict for worker data to support item assignment
         worker_data = defaultdict(set)
         mock_node.config.worker_api_call_recorder = worker_data
 
         plugin = DeferXdistPlugin()
         plugin.pytest_testnodedown(mock_node)
 
-        # Should merge worker data into config
         assert "/test" in worker_data
         assert "test_func" in worker_data["/test"]
 
@@ -377,7 +356,6 @@ class TestDeferXdistPlugin:
         plugin = DeferXdistPlugin()
         plugin.pytest_testnodedown(mock_node)
 
-        # Should not modify config when no worker data
         assert mock_node.config.worker_api_call_recorder == {}
 
     def test_pytest_testnodedown_with_existing_worker_data(self):
@@ -385,7 +363,6 @@ class TestDeferXdistPlugin:
         mock_node = Mock()
         mock_node.workeroutput = {"api_call_recorder": {"/new": ["new_test"]}}
 
-        # Use a real dict for worker data to support item assignment
         worker_data = defaultdict(set)
         worker_data["/existing"].add("existing_test")
         mock_node.config.worker_api_call_recorder = worker_data
@@ -393,7 +370,6 @@ class TestDeferXdistPlugin:
         plugin = DeferXdistPlugin()
         plugin.pytest_testnodedown(mock_node)
 
-        # Should merge new data with existing data
         assert "/existing" in worker_data
         assert "/new" in worker_data
         assert "existing_test" in worker_data["/existing"]

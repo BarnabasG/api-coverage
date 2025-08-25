@@ -1,6 +1,5 @@
 """Data models for pytest-api-cov."""
 
-from collections import defaultdict
 from typing import Any, Dict, Iterator, List, Set, Tuple
 
 from pydantic import BaseModel, Field
@@ -11,7 +10,6 @@ class ApiCallRecorder(BaseModel):
 
     model_config = {"arbitrary_types_allowed": True}
 
-    # Map of endpoint paths to sets of test function names that called them
     calls: Dict[str, Set[str]] = Field(default_factory=dict)
 
     def record_call(self, endpoint: str, test_name: str) -> None:
@@ -70,7 +68,7 @@ class EndpointDiscovery(BaseModel):
     """Model for discovered API endpoints."""
 
     endpoints: List[str] = Field(default_factory=list)
-    discovery_source: str = Field(default="unknown")  # e.g., "flask_adapter", "fastapi_adapter"
+    discovery_source: str = Field(default="unknown")
 
     def add_endpoint(self, endpoint: str) -> None:
         """Add a discovered endpoint."""
@@ -86,7 +84,7 @@ class EndpointDiscovery(BaseModel):
         """Return number of discovered endpoints."""
         return len(self.endpoints)
 
-    def __iter__(self) -> Iterator[str]:
+    def __iter__(self) -> Iterator[str]:  # type: ignore[override]
         """Iterate over discovered endpoints."""
         return iter(self.endpoints)
 
@@ -109,20 +107,16 @@ class SessionData(BaseModel):
 
     def merge_worker_data(self, worker_recorder: Dict[str, Any], worker_endpoints: List[str]) -> None:
         """Merge data from a worker process."""
-        # Handle recorder data
         if isinstance(worker_recorder, dict):
-            # Check if all values are lists (serializable format)
             all_lists = worker_recorder and all(isinstance(v, list) for v in worker_recorder.values())
             if all_lists:
                 worker_api_recorder = ApiCallRecorder.from_serializable(worker_recorder)
             else:
-                # Handle raw dict format or mixed types
                 calls = {k: set(v) if isinstance(v, (list, set)) else {v} for k, v in worker_recorder.items()}
                 worker_api_recorder = ApiCallRecorder(calls=calls)
 
             self.recorder.merge(worker_api_recorder)
 
-        # Handle discovered endpoints
         if worker_endpoints:
             worker_discovery = EndpointDiscovery(endpoints=worker_endpoints, discovery_source="worker")
             self.discovered_endpoints.merge(worker_discovery)

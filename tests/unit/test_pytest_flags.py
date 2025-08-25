@@ -1,4 +1,5 @@
-# tests/unit/test_pytest_flags.py
+"""Tests for pytest flag configuration."""
+
 from unittest.mock import Mock, patch
 
 from pytest_api_cov.pytest_flags import add_pytest_api_cov_flags
@@ -14,7 +15,6 @@ class TestPytestFlags:
 
         add_pytest_api_cov_flags(mock_parser)
 
-        # Verify all options were added
         expected_calls = [
             ("--api-cov-report", "store_true", False, "Generate API coverage report."),
             ("--api-cov-fail-under", "store", None, "Fail if API coverage is below this percentage."),
@@ -44,7 +44,6 @@ class TestPytestFlags:
 
         assert mock_parser.addoption.call_count == len(expected_calls)
 
-        # Verify each option was added with correct parameters
         for i, (option, action, default, help_text) in enumerate(expected_calls):
             call_args = mock_parser.addoption.call_args_list[i]
             assert call_args[1]["action"] == action
@@ -57,9 +56,7 @@ class TestPytestFlags:
 
         add_pytest_api_cov_flags(mock_parser)
 
-        # Verify that addoption was called on the parser
         mock_parser.addoption.assert_called()
 
-        # Verify that the first call has the correct option name
         first_call = mock_parser.addoption.call_args_list[0]
         assert first_call[0][0] == "--api-cov-report"

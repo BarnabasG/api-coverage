@@ -1,4 +1,5 @@
-# tests/test_config.py
+"""Tests for configuration module."""
+
 import os
 from unittest.mock import Mock, patch
 
@@ -28,7 +29,6 @@ class TestConfigLoading:
         """
         (tmp_path / "pyproject.toml").write_text(pyproject_content)
 
-        # Change to the tmp_path directory temporarily
         original_cwd = os.getcwd()
         os.chdir(tmp_path)
         try:
@@ -55,7 +55,6 @@ class TestConfigLoading:
         """Ensure it returns an empty dict if the [tool.pytest_api_cov] section is missing."""
         (tmp_path / "pyproject.toml").write_text("[project]\nname = 'test'")
 
-        # Change to the tmp_path directory temporarily
         original_cwd = os.getcwd()
         os.chdir(tmp_path)
         try:
@@ -67,7 +66,6 @@ class TestConfigLoading:
     def test_read_session_config(self):
         """Verify reading config from pytest's session object (CLI flags)."""
         mock_session_config = Mock()
-        # Simulate providing some CLI flags and leaving others as default
         mock_session_config.getoption.side_effect = lambda name: {
             "--api-cov-fail-under": 80.0,
             "--api-cov-show-covered-endpoints": True,
@@ -78,7 +76,6 @@ class TestConfigLoading:
         assert config["fail_under"] == 80.0
         assert config["show_covered_endpoints"] is True
         assert config["report_path"] == "reports/cov.json"
-        # Ensure unset options are not present
         assert "show_excluded_endpoints" not in config
 
     def test_read_session_config_with_false_values(self):
@@ -103,20 +100,23 @@ class TestConfigLoading:
         config = read_session_config(mock_session_config)
         assert "fail_under" not in config
 
-    @pytest.mark.parametrize("is_tty,encoding,stdout_bool,expected", [
-        (False, "utf-8", True, False),  # Not a tty
-        (True, "utf-8", True, True),    # UTF-8 encoding
-        (True, "UTF8", True, True),     # UTF8 encoding (no dash)
-        (True, "ascii", True, False),   # Non-UTF encoding
-        (True, "utf-8", False, False),  # Falsy stdout
-    ])
+    @pytest.mark.parametrize(
+        "is_tty,encoding,stdout_bool,expected",
+        [
+            (False, "utf-8", True, False),
+            (True, "utf-8", True, True),
+            (True, "UTF8", True, True),
+            (True, "ascii", True, False),
+            (True, "utf-8", False, False),
+        ],
+    )
     def test_supports_unicode(self, is_tty, encoding, stdout_bool, expected):
         """Test supports_unicode with various configurations."""
         mock_stdout = Mock()
         mock_stdout.isatty.return_value = is_tty
         mock_stdout.encoding = encoding
         mock_stdout.__bool__ = Mock(return_value=stdout_bool)
-        
+
         with patch("sys.stdout", mock_stdout):
             assert supports_unicode() == expected
 
@@ -134,9 +134,9 @@ class TestConfigMerging:
         mock_session_config = Mock()
         final_config = get_pytest_api_cov_report_config(mock_session_config)
 
-        assert final_config.fail_under == 75.0  # CLI wins
-        assert final_config.report_path == "toml.json"  # From TOML
-        assert final_config.show_uncovered_endpoints is True  # Default
+        assert final_config.fail_under == 75.0
+        assert final_config.report_path == "toml.json"
+        assert final_config.show_uncovered_endpoints is True
 
     @patch("pytest_api_cov.config.read_session_config", return_value={})
     @patch("pytest_api_cov.config.read_toml_config")
@@ -147,8 +147,8 @@ class TestConfigMerging:
         final_config = get_pytest_api_cov_report_config(Mock())
 
         assert final_config.fail_under == 90.0
-        assert final_config.show_covered_endpoints is False  # Pydantic default
-        assert final_config.exclusion_patterns == []  # Pydantic default
+        assert final_config.show_covered_endpoints is False
+        assert final_config.exclusion_patterns == []
 
     @patch("pytest_api_cov.config.read_session_config", return_value={})
     @patch("pytest_api_cov.config.read_toml_config")
@@ -158,17 +158,14 @@ class TestConfigMerging:
         mock_supports_unicode.return_value = True
         mock_read_toml.return_value = {}
 
-        # Test when force_sugar_disabled is set
         mock_read_session.return_value = {"force_sugar_disabled": True}
         config = get_pytest_api_cov_report_config(Mock())
         assert config.force_sugar is False
 
-        # Test when force_sugar is not set (should use supports_unicode)
         mock_read_session.return_value = {}
         config = get_pytest_api_cov_report_config(Mock())
         assert config.force_sugar is True
 
-        # Test when force_sugar is explicitly set
         mock_read_session.return_value = {"force_sugar": False}
         config = get_pytest_api_cov_report_config(Mock())
         assert config.force_sugar is False
@@ -182,7 +179,7 @@ class TestConfigMerging:
         """Test read_session_config with no options set."""
         mock_session_config = Mock()
         mock_session_config.getoption.return_value = None
-        
+
         config = read_session_config(mock_session_config)
         assert config == {}
 
@@ -192,7 +189,7 @@ class TestConfigMerging:
         mock_session_config.getoption.side_effect = lambda name: {
             "--api-cov-exclusion-patterns": [],
         }.get(name)
-        
+
         config = read_session_config(mock_session_config)
         assert "exclusion_patterns" not in config
 
@@ -202,7 +199,7 @@ class TestConfigMerging:
         mock_session_config.getoption.side_effect = lambda name: {
             "--api-cov-show-covered-endpoints": False,
         }.get(name)
-        
+
         config = read_session_config(mock_session_config)
         assert "show_covered_endpoints" not in config
 
@@ -212,6 +209,6 @@ class TestConfigMerging:
         mock_session_config.getoption.side_effect = lambda name: {
             "--api-cov-fail-under": None,
         }.get(name)
-        
+
         config = read_session_config(mock_session_config)
         assert "fail_under" not in config

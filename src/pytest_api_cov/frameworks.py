@@ -1,4 +1,4 @@
-"""src/pytest_api_cov/frameworks.py"""
+"""Framework adapters for Flask and FastAPI."""
 
 from typing import TYPE_CHECKING, Any, List, Optional
 
@@ -6,7 +6,6 @@ if TYPE_CHECKING:
     from .models import ApiCallRecorder
 
 
-# --- Base Adapter ---
 class BaseAdapter:
     def __init__(self, app: Any):
         self.app = app
@@ -20,10 +19,8 @@ class BaseAdapter:
         raise NotImplementedError
 
 
-# --- Flask Adapter ---
 class FlaskAdapter(BaseAdapter):
     def get_endpoints(self) -> List[str]:
-        # Exclude static and other non-API endpoints
         excluded_rules = ("/static/<path:filename>",)
         return sorted([rule.rule for rule in self.app.url_map.iter_rules() if rule.rule not in excluded_rules])
 
@@ -38,20 +35,16 @@ class FlaskAdapter(BaseAdapter):
                 path = kwargs.get("path") or (args[0] if args else None)
                 if path and hasattr(self.application.url_map, "bind"):
                     try:
-                        # Fetch the endpoint *name*, e.g., 'root' not '/'
                         endpoint_name, _ = self.application.url_map.bind("").match(path, method=kwargs.get("method"))
-                        # Find the rule object associated with that endpoint name
                         endpoint_rule_string = next(self.application.url_map.iter_rules(endpoint_name)).rule
                         recorder.record_call(endpoint_rule_string, test_name)  # type: ignore[union-attr]
                     except Exception:
-                        # Fallback for paths that might not match a rule
                         pass
                 return super().open(*args, **kwargs)
 
         return TrackingFlaskClient(self.app, self.app.response_class)
 
 
-# --- FastAPI Adapter ---
 class FastAPIAdapter(BaseAdapter):
     def get_endpoints(self) -> List[str]:
         from fastapi.routing import APIRoute
@@ -64,17 +57,15 @@ class FastAPIAdapter(BaseAdapter):
         if recorder is None:
             return TestClient(self.app)
 
-        # FastAPI patches the 'send' method of the underlying client
         class TrackingFastAPIClient(TestClient):
             def send(self, *args, **kwargs) -> Any:
                 request = args[0]
-                recorder.record_call(request.url.path, test_name)  # type: ignore[union-attr]
+                recorder.record_call(request.url.path, test_name)
                 return super().send(*args, **kwargs)
 
         return TrackingFastAPIClient(self.app)
 
 
-# --- Factory Function ---
 def get_framework_adapter(app: Any) -> BaseAdapter:
     """Detects the framework and returns the appropriate adapter."""
     app_type = type(app).__name__

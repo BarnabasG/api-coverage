@@ -1,4 +1,5 @@
-# tests/unit/test_frameworks.py
+"""Tests for framework adapters."""
+
 from unittest.mock import Mock, patch
 
 import pytest
@@ -6,7 +7,6 @@ import pytest
 from pytest_api_cov.frameworks import FastAPIAdapter, FlaskAdapter, get_framework_adapter
 
 
-# Mock objects to simulate Flask and FastAPI apps
 class MockFlaskRule:
     def __init__(self, rule):
         self.rule = rule
@@ -40,19 +40,15 @@ class TestFlaskAdapter:
     def test_flask_get_tracked_client_no_recorder(self):
         """Test that get_tracked_client returns normal client when recorder is None."""
         client = self.adapter.get_tracked_client(None, "test_name")
-        # Should return the app's test_client, not our tracking client
         assert client == self.mock_app.test_client()
 
     def test_flask_get_tracked_client_with_recorder(self):
         """Test that get_tracked_client returns tracking client when recorder is provided."""
-        # Mock the response_class to be a proper class
         self.mock_app.response_class = type("MockResponse", (), {})
 
         recorder = {}
         client = self.adapter.get_tracked_client(recorder, "test_name")
-        # Should return our custom TrackingFlaskClient
         assert hasattr(client, "open")
-        # The class name should contain 'TrackingFlaskClient' or be a custom class
         assert "TrackingFlaskClient" in str(type(client)) or hasattr(client, "open")
 
     def test_flask_tracking_client_open_method(self):
@@ -61,37 +57,28 @@ class TestFlaskAdapter:
             recorder = {}
             client = self.adapter.get_tracked_client(recorder, "test_name")
 
-            # Mock the open method to return a response
             client.open = Mock(return_value="response")
 
-            # Test with path in kwargs
             response = client.open(path="/test", method="GET")
-            assert response == "response"  # Mock response
+            assert response == "response"
 
-            # Test with path as first argument
             response = client.open("/test2", method="POST")
-            assert response == "response"  # Mock response
+            assert response == "response"
 
     def test_flask_tracking_client_exception_handling(self):
         """Test exception handling in Flask tracking client."""
         from unittest.mock import Mock, patch
 
-        # Set up the mock response_class properly
         self.mock_app.response_class = type("MockResponse", (), {})
 
         recorder = {}
         client = self.adapter.get_tracked_client(recorder, "test_func")
 
-        # Mock the parent open method to avoid real Flask setup
         with patch.object(client.__class__.__bases__[0], "open", return_value=Mock()) as mock_super_open:
-            # Mock iter_rules to raise an exception during client.open call
             with patch.object(self.mock_app.url_map, "iter_rules", side_effect=Exception("Unexpected error")):
-                # Simulate a request - should not raise exception due to try/except
                 client.open("/test", method="GET")
 
-        # Verify super().open was called (meaning our exception handling worked)
         mock_super_open.assert_called_once()
-        # Recorder should be empty due to exception handling in lines 45-47
         assert recorder == {}
 
 
@@ -106,10 +93,8 @@ class TestFastAPIAdapter:
         self.mock_app.routes = [
             MockFastAPIRoute("/"),
             MockFastAPIRoute("/items/{item_id}"),
-            # Simulate a non-APIRoute that should be ignored
             Mock(path="/docs"),
         ]
-        # Ensure the non-APIRoute mock doesn't pass the isinstance check
         type(self.mock_app.routes[2]).__name__ = "HTMLRoute"
 
         self.adapter = FastAPIAdapter(self.mock_app)
@@ -124,16 +109,13 @@ class TestFastAPIAdapter:
         """Test that get_tracked_client returns normal client when recorder is None."""
         with patch("starlette.testclient.TestClient") as MockTestClient:
             self.adapter.get_tracked_client(None, "test_name")
-            # Should return the TestClient, not our tracking client
             MockTestClient.assert_called_once_with(self.mock_app)
 
     def test_fastapi_get_tracked_client_with_recorder(self):
         """Test that get_tracked_client returns tracking client when recorder is provided."""
         recorder = {}
         client = self.adapter.get_tracked_client(recorder, "test_name")
-        # Should return our custom TrackingFastAPIClient
         assert hasattr(client, "send")
-        # The class name should contain 'TrackingFastAPIClient' or be a custom class
         assert "TrackingFastAPIClient" in str(type(client)) or hasattr(client, "send")
 
     def test_fastapi_tracking_client_send_method(self):
@@ -141,17 +123,13 @@ class TestFastAPIAdapter:
         recorder = {}
         client = self.adapter.get_tracked_client(recorder, "test_name")
 
-        # Mock the send method to return a response
         client.send = Mock(return_value="response")
 
-        # Create a mock request
         mock_request = Mock()
         mock_request.url.path = "/test"
 
-        # Test the send method
         response = client.send(mock_request)
-        assert response == "response"  # Mock response
-        # The recorder should be populated by the tracking client
+        assert response == "response"
         assert "/test" in recorder or hasattr(client, "send")
 
 
@@ -181,7 +159,6 @@ class TestAdapterFactory:
     def test_get_framework_adapter(self):
         """Test the factory function for selecting the correct adapter."""
 
-        # Create mock classes to properly set up the type information
         class MockFlask:
             __module__ = "flask.app"
             __name__ = "Flask"
@@ -214,10 +191,8 @@ class TestAdapterFactory:
     def test_get_framework_adapter_with_missing_module(self):
         """Test factory function with app that has no __module__ attribute."""
         mock_app = Mock()
-        # Create a mock class without __module__ attribute
         mock_class = Mock()
         mock_class.__name__ = "UnknownApp"
-        # Remove __module__ attribute
         del mock_class.__module__
         mock_app.__class__ = mock_class
 

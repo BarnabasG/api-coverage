@@ -1,8 +1,7 @@
-"""src/pytest_api_cov/report.py: Generates the API coverage report output."""
+"""API coverage report generation."""
 
 import json
 import re
-from collections import defaultdict
 from pathlib import Path
 from re import Pattern
 from typing import Any, Dict, List, Set, Tuple
@@ -30,19 +29,22 @@ def categorise_endpoints(
     exclusion_patterns: List[str],
 ) -> Tuple[List[str], List[str], List[str]]:
     """Categorise endpoints into covered, uncovered, and excluded.
-    
+
     Exclusion patterns support simple wildcard matching:
     - Use * for wildcard (matches any characters)
     - All other characters are matched literally
     - Examples: "/admin/*", "/health", "/docs/*"
     """
     covered, uncovered, excluded = [], [], []
-    
-    # Convert simple patterns to regex (escape special chars, handle wildcards)
-    compiled_patterns = [re.compile(f'^{re.escape(pattern).replace(r"\*", ".*")}$') for pattern in exclusion_patterns] if exclusion_patterns else None
-    
+
+    compiled_patterns = (
+        [re.compile("^" + re.escape(pattern).replace(r"\*", ".*") + "$") for pattern in exclusion_patterns]
+        if exclusion_patterns
+        else None
+    )
+
     for endpoint in endpoints:
-        if exclusion_patterns and any(p.match(endpoint) for p in compiled_patterns):
+        if compiled_patterns and any(p.match(endpoint) for p in compiled_patterns):
             excluded.append(endpoint)
             continue
         elif contains_escape_characters(endpoint):
@@ -165,7 +167,7 @@ def generate_pytest_api_cov_report(
         )
 
     if api_cov_config.report_path:
-        detail = prepare_endpoint_detail(covered + uncovered, called_data)  # type: ignore[arg-type]
+        detail = prepare_endpoint_detail(covered + uncovered, called_data)
         final_report = {
             "status": status,
             "coverage": coverage,

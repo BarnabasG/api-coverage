@@ -1,4 +1,4 @@
-"""pytest-api-cov CLI commands for setup and configuration."""
+"""CLI commands for setup and configuration."""
 
 import argparse
 import os
@@ -22,11 +22,9 @@ def detect_framework_and_app() -> Optional[tuple[str, str, str]]:
     for filename, attr_names in common_patterns:
         if os.path.exists(filename):
             try:
-                # Read file to detect framework
                 with open(filename, "r") as f:
                     content = f.read()
 
-                # Simple detection based on imports
                 if "from fastapi import" in content or "import fastapi" in content:
                     framework = "FastAPI"
                 elif "from flask import" in content or "import flask" in content:
@@ -34,7 +32,6 @@ def detect_framework_and_app() -> Optional[tuple[str, str, str]]:
                 else:
                     continue
 
-                # Look for app variable in file
                 for attr_name in attr_names:
                     if f"{attr_name} = " in content:
                         return framework, filename, attr_name
@@ -97,14 +94,12 @@ def cmd_init():
     print("🚀 pytest-api-cov Setup Wizard")
     print("=" * 40)
 
-    # Detect existing setup
     detection_result = detect_framework_and_app()
 
     if detection_result:
         framework, file_path, app_variable = detection_result
         print(f"✅ Detected {framework} app in {file_path} (variable: {app_variable})")
 
-        # Check if conftest.py already exists
         conftest_exists = os.path.exists("conftest.py")
         if conftest_exists:
             print("⚠️  conftest.py already exists")
@@ -118,7 +113,6 @@ def cmd_init():
                 f.write(conftest_content)
             print("✅ Created conftest.py")
 
-        # Check if pyproject.toml exists
         pyproject_exists = os.path.exists("pyproject.toml")
         if pyproject_exists:
             print("ℹ️  pyproject.toml already exists")
@@ -183,7 +177,6 @@ def main():
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
-    # Init command
     subparsers.add_parser("init", help="Initialize pytest-api-cov setup")
 
     args = parser.parse_args()
