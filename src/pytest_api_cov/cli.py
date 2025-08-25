@@ -89,7 +89,7 @@ show_excluded_endpoints = false
 """
 
 
-def cmd_init():
+def cmd_init() -> int:
     """Initialize pytest-api-cov setup in current directory."""
     print("🚀 pytest-api-cov Setup Wizard")
     print("=" * 40)
@@ -171,7 +171,7 @@ def read_root():
     return 0
 
 
-def main():
+def main() -> int:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(prog="pytest-api-cov", description="pytest API coverage plugin CLI tools")
 

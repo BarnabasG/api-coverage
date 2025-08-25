@@ -1,6 +1,6 @@
 """Data models for pytest-api-cov."""
 
-from typing import Any, Dict, Iterator, List, Set, Tuple
+from typing import Any, Dict, Iterable, List, Set, Tuple
 
 from pydantic import BaseModel, Field
 
@@ -51,15 +51,15 @@ class ApiCallRecorder(BaseModel):
         """Check if an endpoint has been recorded."""
         return endpoint in self.calls
 
-    def items(self) -> Iterator[Tuple[str, Set[str]]]:
+    def items(self) -> Iterable[Tuple[str, Set[str]]]:
         """Iterate over endpoint, callers pairs."""
         return self.calls.items()
 
-    def keys(self) -> Iterator[str]:
+    def keys(self) -> Iterable[str]:
         """Get all recorded endpoints."""
         return self.calls.keys()
 
-    def values(self) -> Iterator[Set[str]]:
+    def values(self) -> Iterable[Set[str]]:
         """Get all caller sets."""
         return self.calls.values()
 
@@ -84,7 +84,7 @@ class EndpointDiscovery(BaseModel):
         """Return number of discovered endpoints."""
         return len(self.endpoints)
 
-    def __iter__(self) -> Iterator[str]:  # type: ignore[override]
+    def __iter__(self) -> Iterable[str]:  # type: ignore[override]
         """Iterate over discovered endpoints."""
         return iter(self.endpoints)
 

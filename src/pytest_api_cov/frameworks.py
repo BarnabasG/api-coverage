@@ -31,7 +31,7 @@ class FlaskAdapter(BaseAdapter):
             return self.app.test_client()
 
         class TrackingFlaskClient(FlaskClient):
-            def open(self, *args, **kwargs) -> Any:
+            def open(self, *args: Any, **kwargs: Any) -> Any:
                 path = kwargs.get("path") or (args[0] if args else None)
                 if path and hasattr(self.application.url_map, "bind"):
                     try:
@@ -58,9 +58,10 @@ class FastAPIAdapter(BaseAdapter):
             return TestClient(self.app)
 
         class TrackingFastAPIClient(TestClient):
-            def send(self, *args, **kwargs) -> Any:
+            def send(self, *args: Any, **kwargs: Any) -> Any:
                 request = args[0]
-                recorder.record_call(request.url.path, test_name)
+                if recorder is not None:
+                    recorder.record_call(request.url.path, test_name)
                 return super().send(*args, **kwargs)
 
         return TrackingFastAPIClient(self.app)
