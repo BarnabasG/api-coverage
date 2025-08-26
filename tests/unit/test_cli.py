@@ -18,7 +18,7 @@ class TestDetectFrameworkAndApp:
 
     def test_no_files_exist(self):
         """Test detection when no app files exist."""
-        with patch("os.path.exists", return_value=False):
+        with patch("glob.glob", return_value=[]):
             result = detect_framework_and_app()
             assert result is None
 
@@ -28,6 +28,8 @@ class TestDetectFrameworkAndApp:
             ("FastAPI", "from fastapi import FastAPI", "app", "app.py", "app"),
             ("Flask", "from flask import Flask", "application", "app.py", "application"),
             ("FastAPI", "import fastapi\nfrom fastapi import FastAPI", "main", "main.py", "main"),
+            ("FastAPI", "from fastapi import FastAPI", "app", "src/main.py", "app"),
+            ("Flask", "from flask import Flask", "app", "example/src/main.py", "app"),
         ],
     )
     def test_framework_app_detection(self, framework, import_stmt, var_name, expected_file, expected_var):
@@ -53,10 +55,7 @@ def root():
     return "hello"
 """
 
-        def mock_exists(path):
-            return path == expected_file
-
-        with patch("os.path.exists", side_effect=mock_exists), patch("builtins.open", mock_open(read_data=app_content)):
+        with patch("glob.glob", return_value=[expected_file]), patch("builtins.open", mock_open(read_data=app_content)):
             result = detect_framework_and_app()
             assert result == (framework, expected_file, expected_var)
 
@@ -68,7 +67,7 @@ import sys
 def hello():
     return "hello"
 """
-        with patch("os.path.exists", return_value=True), patch("builtins.open", mock_open(read_data=app_content)):
+        with patch("glob.glob", return_value=["app.py"]), patch("builtins.open", mock_open(read_data=app_content)):
             result = detect_framework_and_app()
             assert result is None
 
@@ -79,14 +78,14 @@ from fastapi import FastAPI
 
 # No app variable defined
 """
-        with patch("os.path.exists", return_value=True), patch("builtins.open", mock_open(read_data=app_content)):
+        with patch("glob.glob", return_value=["app.py"]), patch("builtins.open", mock_open(read_data=app_content)):
             result = detect_framework_and_app()
             assert result is None
 
     def test_file_read_exception(self):
         """Test handling of file read exceptions."""
         with (
-            patch("os.path.exists", return_value=True),
+            patch("glob.glob", return_value=["app.py"]),
             patch("builtins.open", side_effect=IOError("Cannot read file")),
         ):
             result = detect_framework_and_app()
@@ -99,18 +98,19 @@ from flask import Flask
 server = Flask(__name__)
 """
 
-        def mock_exists(path):
-            return path in ["app.py", "server.py"]
+        with patch("glob.glob", return_value=["app.py", "server.py"]):
 
-        def mock_open_handler(path, mode="r"):
-            if path == "app.py":
-                return mock_open(read_data="# just a comment")()
-            elif path == "server.py":
-                return mock_open(read_data=flask_content)()
+            def mock_open_handler(path, mode="r"):
+                if path == "app.py":
+                    return mock_open(read_data="# foobar")()
+                elif path == "server.py":
+                    return mock_open(read_data=flask_content)()
+                else:
+                    return mock_open(read_data="")()
 
-        with patch("os.path.exists", side_effect=mock_exists), patch("builtins.open", side_effect=mock_open_handler):
-            result = detect_framework_and_app()
-            assert result == ("Flask", "server.py", "server")
+            with patch("builtins.open", side_effect=mock_open_handler):
+                result = detect_framework_and_app()
+                assert result == ("Flask", "server.py", "server")
 
 
 class TestGenerateConftestContent:
@@ -135,6 +135,26 @@ class TestGenerateConftestContent:
         assert "def app():" in content
         assert "Provide the Flask app" in content
         assert "return application" in content
+
+    def test_subdirectory_conftest(self):
+        """Test generating conftest for app in subdirectory."""
+        content = generate_conftest_content("FastAPI", "src/main.py", "app")
+
+        assert "import pytest" in content
+        assert "from src.main import app" in content
+        assert "def app():" in content
+        assert "Provide the FastAPI app" in content
+        assert "return app" in content
+
+    def test_nested_subdirectory_conftest(self):
+        """Test generating conftest for app in nested subdirectory."""
+        content = generate_conftest_content("Flask", "example/src/main.py", "app")
+
+        assert "import pytest" in content
+        assert "from example.src.main import app" in content
+        assert "def app():" in content
+        assert "Provide the Flask app" in content
+        assert "return app" in content
 
 
 class TestGeneratePyprojectConfig:

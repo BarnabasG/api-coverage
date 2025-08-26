@@ -1,6 +1,6 @@
 [project]
 name = "pytest-api-cov"
-version = "1.0.0"
+version = "0.1.2"
 description = "Api Coverage Report Pytest Plugin"
 readme = "README.md"
 authors = [
@@ -17,12 +17,12 @@ dependencies = [
     "rich>=14.0.0",
     "starlette>=0.47.1",
     "tomli>=2.2.1",
+    "pytest>=8.4.1",
 ]
 
 [dependency-groups]
 dev = [
     "mypy>=1.17.0",
-    "pytest>=8.4.1",
     "pytest-cov>=6.2.1",
     "pytest-sugar>=1.0.0",
     "pytest-xdist>=3.8.0",
@@ -68,6 +68,12 @@ include = [
     "LICENSE",
     "pyproject.toml",
 ]
+
+# [[tool.uv.index]]
+# name = "testpypi"
+# url = "https://test.pypi.org/simple/"
+# publish-url = "https://test.pypi.org/legacy/"
+# explicit = true
 
 [project.entry-points."pytest11"]
 pytest_api_cov = "pytest_api_cov.plugin"

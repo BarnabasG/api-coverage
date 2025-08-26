@@ -46,13 +46,18 @@ clean:
 
 build:
 	@echo "Building plugin..."
+	@uv sync
 	@uv build
 
 publish:
 	@echo "Publishing plugin..."
-	# @uv publish --token $(PYPI_TOKEN)
+	@uv publish --token $(PYPI_TOKEN)
 
 publish-test:
 	@echo "Publishing plugin to test PyPI..."
-	@echo $(TEST_PYPI_TOKEN)
-	@uv publish --token $(TEST_PYPI_TOKEN)
+	@echo //$(TEST_PYPI_TOKEN)//
+	@uv publish --token $(TEST_PYPI_TOKEN) --index testpypi
+
+verify-publish:
+	@echo "Verifying plugin was published to PyPI..."
+	@uv run --with pytest-api-cov --no-project -- python -c "import pytest_api_cov; print(f'Plugin verified successfully. Version: {pytest_api_cov.__version__}')"

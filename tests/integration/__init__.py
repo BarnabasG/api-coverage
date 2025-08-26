@@ -1,1 +1,1 @@
-# This file makes the integration directory a Python package
+"""init integration tests."""
