@@ -1,6 +1,6 @@
 [project]
 name = "pytest-api-cov"
-version = "0.1.3"
+version = "1.0.0"
 description = "Api Coverage Report Pytest Plugin"
 readme = "README.md"
 authors = [

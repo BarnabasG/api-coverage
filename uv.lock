@@ -547,7 +547,7 @@ wheels = [
 
 [[package]]
 name = "pytest-api-cov"
-version = "0.1.3"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
