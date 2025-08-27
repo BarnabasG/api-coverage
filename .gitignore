@@ -1,0 +1,15 @@
+__pycache__/
+.pytest_cache/
+.venv/
+reports/
+*.egg-info/
+dist/
+.history/
+.lh/
+.vscode/
+.ruff_cache/
+htmlcov/
+.python-version
+.coverage
+coverage.*
+*pypi_token*
