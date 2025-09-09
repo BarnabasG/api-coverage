@@ -40,8 +40,12 @@ def auto_discover_app() -> Optional[Any]:
         ("asgi.py", ["app", "application"]),
     ]
 
+    found_apps = []  # Track all discovered apps
+    found_files = []  # Track all files that exist
+
     for filename, attr_names in common_patterns:
         if os.path.exists(filename):
+            found_files.append(filename)
             logger.debug(f"> Found {filename}, checking for app variables...")
             try:
                 module_name = filename[:-3]  # .py extension
@@ -54,10 +58,18 @@ def auto_discover_app() -> Optional[Any]:
                         if hasattr(module, attr_name):
                             app = getattr(module, attr_name)
                             if is_supported_framework(app):
-                                logger.info(
-                                    f"✅ Auto-discovered {type(app).__name__} app in {filename} as '{attr_name}'"
-                                )
-                                return app
+                                found_apps.append((filename, attr_name, type(app).__name__))
+                                # Return the first valid app found, but log what we're doing
+                                if len(found_apps) == 1:
+                                    logger.info(
+                                        f"✅ Auto-discovered {type(app).__name__} app in {filename} as '{attr_name}'"
+                                    )
+                                    # Check if there are more files to scan
+                                    remaining_files = [f for f in [p[0] for p in common_patterns[common_patterns.index((filename, attr_names)):]] if os.path.exists(f) and f != filename]
+                                    if remaining_files:
+                                        logger.debug(f"> Note: Also found files {remaining_files} but using first discovered app")
+                                        logger.debug(f"> To use a different app, create a conftest.py with an 'app' fixture")
+                                    return app
                             else:
                                 logger.debug(f"> Found '{attr_name}' in {filename} but it's not a supported framework")
 
@@ -65,6 +77,12 @@ def auto_discover_app() -> Optional[Any]:
                 logger.debug(f"> Could not import {filename}: {e}")
                 continue
 
+    # If we get here, no apps were found
+    if found_files:
+        logger.debug(f"> Found files {found_files} but no supported Flask/FastAPI apps in them")
+        logger.debug(f"> If your app is in one of these files with a different variable name,")
+        logger.debug(f"> create a conftest.py with an 'app' fixture to specify it")
+    
     logger.debug("> No app auto-discovered")
     return None
 
@@ -76,7 +94,7 @@ def get_helpful_error_message() -> str:
 
 Quick Setup Options:
 
-Option 1 - Auto-discovery (Recommended):
+Option 1 - Auto-discovery (Zero Config):
   Place your FastAPI/Flask app in one of these files:
   • app.py (with variable named 'app', 'application', or 'main')
   • main.py (with variable named 'app', 'application', or 'main')
@@ -86,19 +104,26 @@ Option 1 - Auto-discovery (Recommended):
     from fastapi import FastAPI
     app = FastAPI()  # <- Plugin will auto-discover this
 
-Option 2 - Manual fixture:
-  Create conftest.py with:
+Option 2 - Custom Location or Override Auto-discovery:
+  Create conftest.py to specify exactly which app to use:
 
     import pytest
-    from your_module import your_app
+    from my_project.api.server import my_app  # Any import path!
+    # or from app import my_real_app  # Override auto-discovery
 
     @pytest.fixture
     def app():
-        return your_app
+        return my_app
+
+  This works for:
+  • Apps in custom locations
+  • Multiple app files (specify which one to use)
+  • Different variable names in standard files
+
+Option 3 - Setup Wizard:
+  Run: pytest-api-cov init
 
 Then run: pytest --api-cov-report
-
-Need help? Run: pytest-api-cov init (for setup wizard)
 """
 
 

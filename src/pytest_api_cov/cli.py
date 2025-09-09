@@ -56,13 +56,17 @@ def generate_conftest_content(framework: str, file_path: str, app_variable: str)
 
 import pytest
 
-# Import your {framework} app
+# Import your {framework} app from anywhere in your project
 from {module_path} import {app_variable}
 
 
 @pytest.fixture
 def app():
-    """Provide the {framework} app for API coverage testing."""
+    """Provide the {framework} app for API coverage testing.
+    
+    You can import from any location - just change the import path above
+    to match your project structure.
+    """
     return {app_variable}
 
 

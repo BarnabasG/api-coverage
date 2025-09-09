@@ -198,3 +198,177 @@ def test_custom_fixture_fallback_when_not_found(pytester):
     output = result.stdout.str()
     assert "API Coverage Report" in output
     assert "Total API Coverage: 100.0%" in output
+
+
+def test_custom_app_location_via_fixture(pytester):
+    """Test that apps can be imported from any custom location via app fixture."""
+    # Create a nested directory structure
+    pytester.makepyfile(
+        **{
+            "my_project/backend/server.py": """
+                from flask import Flask
+
+                my_custom_app = Flask(__name__)
+
+                @my_custom_app.route("/")
+                def root():
+                    return "Hello from custom location"
+
+                @my_custom_app.route("/api/users")
+                def users():
+                    return "Users endpoint"
+            """,
+            "my_project/__init__.py": "",
+            "my_project/backend/__init__.py": "",
+            "conftest.py": """
+                import pytest
+                from my_project.backend.server import my_custom_app
+
+                @pytest.fixture
+                def app():
+                    return my_custom_app
+            """,
+            "test_custom_location.py": """
+                def test_root_endpoint(coverage_client):
+                    response = coverage_client.get("/")
+                    assert response.status_code == 200
+                    assert response.data == b"Hello from custom location"
+            """
+        }
+    )
+    
+    result = pytester.runpytest(
+        "--api-cov-report",
+        "--api-cov-show-covered-endpoints",
+    )
+    
+    assert result.ret == 0
+    output = result.stdout.str()
+    assert "API Coverage Report" in output
+    assert "Total API Coverage: 50.0%" in output
+    assert "Covered Endpoints" in output
+    assert "[.] /" in output
+    assert "Uncovered Endpoints" in output
+    assert "[X] /api/users" in output
+
+
+def test_multiple_auto_discover_files_uses_first(pytester):
+    """Test that when multiple auto-discover files exist, the first valid one is used."""
+    pytester.makepyfile(
+        **{
+            "app.py": """
+                from flask import Flask
+                app = Flask(__name__)
+                
+                @app.route("/from-app-py")
+                def from_app():
+                    return "From app.py"
+            """,
+            "main.py": """
+                from flask import Flask
+                app = Flask(__name__)
+                
+                @app.route("/from-main-py")
+                def from_main():
+                    return "From main.py"
+            """,
+            "test_multiple.py": """
+                def test_endpoint(coverage_client):
+                    # Should use app.py since it comes first in the pattern list
+                    response = coverage_client.get("/from-app-py")
+                    assert response.status_code == 200
+            """
+        }
+    )
+    
+    result = pytester.runpytest("--api-cov-report", "-v")
+    
+    assert result.ret == 0
+    output = result.stdout.str()
+    assert "API Coverage Report" in output
+    assert "Total API Coverage: 100.0%" in output
+    # The test should pass, meaning it used app.py (first in priority order)
+
+
+def test_override_auto_discovery_with_fixture(pytester):
+    """Test that app fixture overrides auto-discovery."""
+    pytester.makepyfile(
+        **{
+            "app.py": """
+                from flask import Flask
+                wrong_app = Flask(__name__)
+                
+                @wrong_app.route("/wrong")
+                def wrong():
+                    return "Wrong app"
+            """,
+            "my_real_app.py": """
+                from flask import Flask
+                real_app = Flask(__name__)
+                
+                @real_app.route("/correct")
+                def correct():
+                    return "Correct app"
+            """,
+            "conftest.py": """
+                import pytest
+                from my_real_app import real_app
+                
+                @pytest.fixture
+                def app():
+                    return real_app
+            """,
+            "test_override.py": """
+                def test_correct_app(coverage_client):
+                    # Should use the app from fixture, not auto-discovery
+                    response = coverage_client.get("/correct")
+                    assert response.status_code == 200
+            """
+        }
+    )
+    
+    result = pytester.runpytest("--api-cov-report")
+    
+    assert result.ret == 0
+    output = result.stdout.str()
+    assert "API Coverage Report" in output
+    assert "Total API Coverage: 100.0%" in output
+    # The test should pass, meaning it used the correct app from fixture
+    # (if it used auto-discovery, it would try to access /wrong and fail)
+
+
+def test_auto_discover_file_exists_but_wrong_variable_name(pytester):
+    """Test when auto-discover file exists but app has different variable name."""
+    pytester.makepyfile(
+        **{
+            "app.py": """
+                from flask import Flask
+                my_custom_app_name = Flask(__name__)
+                
+                @my_custom_app_name.route("/")
+                def root():
+                    return "Hello"
+            """,
+            "conftest.py": """
+                import pytest
+                from app import my_custom_app_name
+                
+                @pytest.fixture
+                def app():
+                    return my_custom_app_name
+            """,
+            "test_custom_name.py": """
+                def test_endpoint(coverage_client):
+                    response = coverage_client.get("/")
+                    assert response.status_code == 200
+            """
+        }
+    )
+    
+    result = pytester.runpytest("--api-cov-report")
+    
+    assert result.ret == 0
+    output = result.stdout.str()
+    assert "API Coverage Report" in output
+    assert "Total API Coverage: 100.0%" in output
+    # The test should pass, meaning it used the app fixture with custom variable name

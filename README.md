@@ -26,10 +26,27 @@ For most projects, no configuration is needed:
 pytest --api-cov-report
 ```
 
+### App Location Flexibility
+
+**Zero Config**: Works automatically if your app is in `app.py`, `main.py`, or `server.py`
+
+**Any Location**: Place your app anywhere in your project - just create a `conftest.py`:
+
+```python
+import pytest
+from my_project.backend.api import my_app  # Any import path!
+
+@pytest.fixture
+def app():
+    return my_app
+```
+
 The plugin will automatically discover your Flask/FastAPI app if it's in common locations:
 - `app.py` (with variable `app`, `application`, or `main`)
 - `main.py` (with variable `app`, `application`, or `main`) 
 - `server.py` (with variable `app`, `application`, or `server`)
+
+**Your app can be located anywhere!** If it's not in a standard location, just create a `conftest.py` file to tell the plugin where to find it.
 
 ### Example
 
@@ -71,17 +88,24 @@ Running `pytest --api-cov-report` produces:
 API Coverage Report
 Uncovered Endpoints:
   [X] /health
-Covered Endpoints:
-  [.] /
-  [.] /users/123
 
 Total API Coverage: 66.67%
 ```
 
-Or running  `pytest --api-cov-report --api-cov-show-covered-endpoints --api-cov-exclusion-patterns="/users/* --api-cov-show-excluded-endpoints --api-cov-report-path=api_coverage.json` produces:
+Or running with advanced options `pytest --api-cov-report --api-cov-show-covered-endpoints --api-cov-exclusion-patterns="/users/*" --api-cov-show-excluded-endpoints --api-cov-report-path=api_coverage.json` produces:
 
 ```
+API Coverage Report
+Uncovered Endpoints:
+  [X] /health
+Covered Endpoints:
+  [.] /
+Excluded Endpoints:
+  [-] /users/{user_id}
 
+Total API Coverage: 50.0%
+
+JSON report saved to api_coverage.json
 ```
 
 ## Advanced Configuration
@@ -101,16 +125,22 @@ This will:
 
 ### Manual Configuration
 
-Create a `conftest.py` file:
+Create a `conftest.py` file to specify your app location (works with **any** file path or structure):
 
 ```python
 import pytest
-from your_app import app
+
+# Import from anywhere in your project
+from my_project.backend.api import flask_app
+# or from src.services.web_server import fastapi_instance  
+# or from deeply.nested.modules import my_app
 
 @pytest.fixture
 def app():
-    return app
+    return flask_app  # Return your app instance
 ```
+
+This approach works with any project structure - the plugin doesn't care where your app is located as long as you can import it.
 
 ### Custom Test Client Fixtures
 
@@ -329,13 +359,56 @@ jobs:
 
 ### No App Found
 
-If you see "No API app found", ensure:
+If you see "No API app found", you have several options:
 
-1. Your app is in a standard location (`app.py`, `main.py`, etc.)
-2. Your app variable has a standard name (`app`, `application`, `main`)
-3. Your app imports are correct (`from fastapi import FastAPI` or `from flask import Flask`)
+**Option 1 - Auto-discovery (Zero Config)**
+Place your app in a standard location with a standard name:
+- Files: `app.py`, `main.py`, `server.py`, `wsgi.py`, `asgi.py`
+- Variable names: `app`, `application`, `main`, `server`
 
-Or use the setup wizard: `pytest-api-cov init`
+**Option 2 - Custom Location (Any File/Path)**
+Create a `conftest.py` file to specify your app location:
+
+```python
+import pytest
+from my_project.api.server import my_flask_app  # Any import path
+# or from src.backend.main import fastapi_instance
+# or from anywhere import your_app
+
+@pytest.fixture
+def app():
+    return my_flask_app  # Return your app instance
+```
+
+**Option 3 - Override Auto-discovery**
+If you have multiple auto-discoverable files or want to use a different app:
+
+```python
+# Even if you have app.py, you can override it
+import pytest
+from main import my_real_app  # Use this instead of app.py
+
+@pytest.fixture
+def app():
+    return my_real_app
+```
+
+**Option 4 - Setup Wizard**
+Run the interactive setup: `pytest-api-cov init`
+
+The plugin will automatically find your app using the `app` fixture first, then fall back to auto-discovery in common locations. This means you can place your app **anywhere** as long as you create the fixture.
+
+### Multiple App Files
+
+If you have multiple files that could be auto-discovered (e.g., both `app.py` and `main.py`), the plugin will use the **first valid app it finds** in this priority order:
+
+1. `app.py` 
+2. `main.py`
+3. `server.py`
+4. `wsgi.py`
+5. `asgi.py`
+
+To use a specific app when multiple exist, create a `conftest.py` with an `app` fixture pointing to your preferred app.
 
 ### No Endpoints Discovered
 
