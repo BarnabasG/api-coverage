@@ -24,9 +24,10 @@ class TestSupportedFramework:
     def test_package_version(self):
         """Test that package version is accessible."""
         import pytest_api_cov
+
         assert hasattr(pytest_api_cov, "__version__")
         assert isinstance(pytest_api_cov.__version__, str)
-        assert pytest_api_cov.__version__ == "0.1.1"
+        assert pytest_api_cov.__version__ == "1.0.0"
 
     def test_is_supported_framework_none(self):
         """Test framework detection with None."""

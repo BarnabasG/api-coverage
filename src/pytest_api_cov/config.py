@@ -20,6 +20,7 @@ class ApiCoverageReportConfig(BaseModel):
     report_path: Optional[str] = Field(None, alias="api-cov-report-path")
     force_sugar: bool = Field(False, alias="api-cov-force-sugar")
     force_sugar_disabled: bool = Field(False, alias="api-cov-force-sugar-disabled")
+    client_fixture_name: str = Field("coverage_client", alias="api-cov-client-fixture-name")
 
 
 def read_toml_config() -> Dict[str, Any]:
@@ -43,6 +44,7 @@ def read_session_config(session_config: Any) -> Dict[str, Any]:
         "api-cov-report-path": "report_path",
         "api-cov-force-sugar": "force_sugar",
         "api-cov-force-sugar-disabled": "force_sugar_disabled",
+        "api-cov-client-fixture-name": "client_fixture_name",
     }
     config = {}
     for opt, key in cli_options.items():

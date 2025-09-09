@@ -61,17 +61,27 @@ from {module_path} import {app_variable}
 
 
 @pytest.fixture
-def client():
-    """Provide the {framework} client for API coverage testing.
-    
-    In your test:
-    ```
-    def test_root_endpoint(client):
-        response = client.get("/")
-        assert response.status_code == 200
-    ```
-    """
+def app():
+    """Provide the {framework} app for API coverage testing."""
     return {app_variable}
+
+
+# The plugin will automatically create a 'coverage_client' fixture that uses your 'app' fixture
+# You can use either:
+# - def test_endpoint(app): ...  # Direct app access
+# - def test_endpoint(coverage_client): ...  # Test client with API coverage tracking
+#
+# To wrap an existing custom fixture instead, specify the fixture name in pyproject.toml:
+# [tool.pytest_api_cov]
+# client_fixture_name = "my_custom_client"
+#
+# Example custom fixture:
+# @pytest.fixture
+# def my_custom_client(app):
+#     client = app.test_client()  # Flask
+#     # or client = TestClient(app)  # FastAPI
+#     # Add custom setup here (auth headers, etc.)
+#     return client
 '''
 
 
@@ -100,6 +110,9 @@ show_excluded_endpoints = false
 
 # Force Unicode symbols in terminal output (optional)
 # force_sugar = true
+
+# Wrap an existing custom test client fixture with coverage tracking (optional)
+# client_fixture_name = "my_custom_client"
 """
 
 
@@ -152,13 +165,13 @@ testpaths = ["tests"]
         print("🎉 Setup complete!")
         print()
         print("Next steps:")
-        print("1. Write your tests using the 'client' fixture")
+        print("1. Write your tests using the 'coverage_client' fixture")
         print("2. Run: pytest --api-cov-report")
         print()
         print("Example test:")
         print("""
-def test_root_endpoint(client):
-    response = client.get("/")
+def test_root_endpoint(coverage_client):
+    response = coverage_client.get("/")
     assert response.status_code == 200
 """)
 

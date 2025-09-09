@@ -26,6 +26,7 @@ class TestFlaskAdapter:
     """Tests for the Flask framework adapter."""
 
     def setup_method(self):
+        """Set up test fixtures."""
         self.mock_app = Mock()
         self.mock_app.__module__ = "flask"
         type(self.mock_app).__name__ = "Flask"

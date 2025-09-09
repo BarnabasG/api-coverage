@@ -282,7 +282,7 @@ class TestCmdInit:
         assert result == 0
         mock_print.assert_any_call("🎉 Setup complete!")
         mock_print.assert_any_call("Next steps:")
-        mock_print.assert_any_call("1. Write your tests using the 'client' fixture")
+        mock_print.assert_any_call("1. Write your tests using the 'coverage_client' fixture")
         mock_print.assert_any_call("2. Run: pytest --api-cov-report")
 
 

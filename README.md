@@ -56,12 +56,12 @@ def health_check():
 And this test file:
 
 ```python
-def test_root_endpoint(client):
-    response = client.get("/")
+def test_root_endpoint(coverage_client):
+    response = coverage_client.get("/")
     assert response.status_code == 200
 
-def test_get_user(client):
-    response = client.get("/users/123")
+def test_get_user(coverage_client):
+    response = coverage_client.get("/users/123")
     assert response.status_code == 200
 ```
 
@@ -71,8 +71,17 @@ Running `pytest --api-cov-report` produces:
 API Coverage Report
 Uncovered Endpoints:
   [X] /health
+Covered Endpoints:
+  [.] /
+  [.] /users/123
 
 Total API Coverage: 66.67%
+```
+
+Or running  `pytest --api-cov-report --api-cov-show-covered-endpoints --api-cov-exclusion-patterns="/users/* --api-cov-show-excluded-endpoints --api-cov-report-path=api_coverage.json` produces:
+
+```
+
 ```
 
 ## Advanced Configuration
@@ -101,6 +110,41 @@ from your_app import app
 @pytest.fixture
 def app():
     return app
+```
+
+### Custom Test Client Fixtures
+
+If you have an existing test client fixture with custom setup (authentication, headers, etc.), you can wrap it with coverage tracking:
+
+```python
+import pytest
+from fastapi.testclient import TestClient
+from your_app import app
+
+@pytest.fixture
+def my_custom_client():
+    """Custom test client with authentication."""
+    client = TestClient(app)
+    client.headers.update({"Authorization": "Bearer test-token"})
+    return client
+
+def test_endpoint(coverage_client):
+    # coverage_client will be your custom client with coverage tracking
+    response = coverage_client.get("/protected-endpoint")
+    assert response.status_code == 200
+```
+
+Configure it in `pyproject.toml`:
+
+```toml
+[tool.pytest_api_cov]
+client_fixture_name = "my_custom_client"
+```
+
+Or via command line:
+
+```bash
+pytest --api-cov-report --api-cov-client-fixture-name=my_custom_client
 ```
 
 ### Configuration Options
@@ -135,6 +179,9 @@ force_sugar = true
 
 # Force no Unicode symbols in output
 force_sugar_disabled = true
+
+# Wrap an existing custom test client fixture with coverage tracking
+client_fixture_name = "my_custom_client"
 ```
 
 ### Command Line Options
@@ -176,7 +223,6 @@ Works automatically with FastAPI and Flask applications.
 
 ```python
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
 
 app = FastAPI()
 
@@ -184,9 +230,9 @@ app = FastAPI()
 def read_item(item_id: int):
     return {"item_id": item_id}
 
-# Tests automatically get a 'client' fixture
-def test_read_item(client):
-    response = client.get("/items/42")
+# Tests automatically get a 'coverage_client' fixture
+def test_read_item(coverage_client):
+    response = coverage_client.get("/items/42")
     assert response.status_code == 200
 ```
 
@@ -201,9 +247,9 @@ app = Flask(__name__)
 def get_user(user_id):
     return {"user_id": user_id}
 
-# Tests automatically get a 'client' fixture  
-def test_get_user(client):
-    response = client.get("/users/123")
+# Tests automatically get a 'coverage_client' fixture  
+def test_get_user(coverage_client):
+    response = coverage_client.get("/users/123")
     assert response.status_code == 200
 ```
 
@@ -297,7 +343,7 @@ If you see "No endpoints discovered":
 
 1. Check that your app is properly instantiated
 2. Verify your routes/endpoints are defined
-3. Ensure the `client` fixture is working in your tests
+3. Ensure the `coverage_client` fixture is working in your tests
 4. Use `-v` or `-vv` for debug information
 
 ### Framework Not Detected

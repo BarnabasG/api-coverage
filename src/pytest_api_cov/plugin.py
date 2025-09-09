@@ -140,18 +140,37 @@ def pytest_sessionstart(session: pytest.Session) -> None:
         session.api_coverage_data = SessionData()  # type: ignore[attr-defined]
 
 
-@pytest.fixture
-def client(request: pytest.FixtureRequest) -> Any:
-    """
-    Smart auto-discovering test client that records API calls for coverage.
+def wrap_client_with_coverage(client: Any, recorder: Any, test_name: str) -> Any:
+    """Wrap an existing test client with coverage tracking."""
 
-    Tries to find an 'app' fixture first, then auto-discovers apps in common locations.
-    """
-    session = request.node.session
+    class CoverageWrapper:
+        def __init__(self, wrapped_client: Any):
+            self._wrapped = wrapped_client
 
-    if not session.config.getoption("--api-cov-report"):
-        pytest.skip("API coverage not enabled. Use --api-cov-report flag.")
+        def __getattr__(self, name: str) -> Any:
+            attr = getattr(self._wrapped, name)
+            if name in ["get", "post", "put", "delete", "patch", "head", "options"]:
 
+                def tracked_method(*args: Any, **kwargs: Any) -> Any:
+                    response = attr(*args, **kwargs)
+                    # Extract path from args[0]
+                    if args and recorder is not None:
+                        path = args[0]
+                        # Clean up the path to match endpoint format
+                        if isinstance(path, str):
+                            # Remove query parameters
+                            path = path.partition("?")[0]
+                            recorder.record_call(path, test_name)
+                    return response
+
+                return tracked_method
+            return attr
+
+    return CoverageWrapper(client)
+
+
+def get_app_from_fixture_or_auto_discover(request: pytest.FixtureRequest) -> Any:
+    """Get app from fixture or auto-discovery."""
     app = None
     try:
         app = request.getfixturevalue("app")
@@ -159,6 +178,59 @@ def client(request: pytest.FixtureRequest) -> Any:
     except pytest.FixtureLookupError:
         logger.debug("> No 'app' fixture found, trying auto-discovery...")
         app = auto_discover_app()
+    return app
+
+
+@pytest.fixture
+def coverage_client(request: pytest.FixtureRequest) -> Any:
+    """
+    Smart auto-discovering test coverage_client that records API calls for coverage.
+
+    Tries to find an 'app' fixture first, then auto-discovers apps in common locations.
+    Can also wrap existing custom fixtures if configured.
+    """
+    session = request.node.session
+
+    if not session.config.getoption("--api-cov-report"):
+        pytest.skip("API coverage not enabled. Use --api-cov-report flag.")
+
+    config = get_pytest_api_cov_report_config(request.config)
+    coverage_data = getattr(session, "api_coverage_data", None)
+    if coverage_data is None:
+        pytest.skip("API coverage data not initialized. This should not happen.")
+
+    # Check if we should wrap an existing fixture
+    if config.client_fixture_name != "coverage_client":
+        try:
+            # Get the existing custom fixture
+            existing_client = request.getfixturevalue(config.client_fixture_name)
+            logger.info(f"> Found custom fixture '{config.client_fixture_name}', wrapping with coverage tracking")
+
+            # We still need to discover endpoints, so try to get the app
+            app = get_app_from_fixture_or_auto_discover(request)
+            if app and is_supported_framework(app):
+                try:
+                    adapter = get_framework_adapter(app)
+                    if not coverage_data.discovered_endpoints.endpoints:
+                        endpoints = adapter.get_endpoints()
+                        framework_name = type(app).__name__
+                        for endpoint in endpoints:
+                            coverage_data.add_discovered_endpoint(endpoint, f"{framework_name.lower()}_adapter")
+                        logger.info(f"> pytest-api-coverage: Discovered {len(endpoints)} endpoints.")
+                        logger.debug(f"> Discovered endpoints: {endpoints}")
+                except Exception as e:
+                    logger.warning(f"> pytest-api-coverage: Could not discover endpoints from app. Error: {e}")
+
+            # Wrap the existing client with coverage tracking
+            wrapped_client = wrap_client_with_coverage(existing_client, coverage_data.recorder, request.node.name)
+            yield wrapped_client
+            return
+
+        except pytest.FixtureLookupError:
+            logger.warning(f"> Custom fixture '{config.client_fixture_name}' not found, falling back to auto-discovery")
+
+    # Original auto-discovery logic
+    app = get_app_from_fixture_or_auto_discover(request)
 
     if app is None:
         helpful_msg = get_helpful_error_message()
@@ -172,10 +244,6 @@ def client(request: pytest.FixtureRequest) -> Any:
         adapter = get_framework_adapter(app)
     except TypeError as e:
         pytest.skip(f"Framework detection failed: {e}")
-
-    coverage_data = getattr(session, "api_coverage_data", None)
-    if coverage_data is None:
-        pytest.skip("API coverage data not initialized. This should not happen.")
 
     if not coverage_data.discovered_endpoints.endpoints:
         try:

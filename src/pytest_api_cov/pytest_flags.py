@@ -66,3 +66,11 @@ def add_pytest_api_cov_flags(parser: pytest.Parser) -> None:
         default=False,
         help="Disable use of API coverage sugar in console report.",
     )
+
+    parser.addoption(
+        "--api-cov-client-fixture-name",
+        action="store",
+        type=str,
+        default=None,
+        help="Name of existing test client fixture to wrap with coverage tracking",
+    )
