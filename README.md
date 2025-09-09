@@ -92,7 +92,7 @@ Uncovered Endpoints:
 Total API Coverage: 66.67%
 ```
 
-Or running with advanced options `pytest --api-cov-report --api-cov-show-covered-endpoints --api-cov-exclusion-patterns="/users/*" --api-cov-show-excluded-endpoints --api-cov-report-path=api_coverage.json` produces:
+Or running with advanced options `pytest --api-cov-report --api-cov-show-covered-endpoints --api-cov-exclusion-patterns="/users/*" --api-cov-show-excluded-endpoints --api-cov-report-path=api_coverage.json --api-cov-fail-under=49` produces:
 
 ```
 API Coverage Report
@@ -103,7 +103,7 @@ Covered Endpoints:
 Excluded Endpoints:
   [-] /users/{user_id}
 
-Total API Coverage: 50.0%
+SUCCESS: Coverage of 50.0% meets requirement of 49.0%
 
 JSON report saved to api_coverage.json
 ```
