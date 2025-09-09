@@ -1,6 +1,6 @@
 [project]
 name = "pytest-api-cov"
-version = "1.0.0"
+version = "1.0.1"
 description = "Api Coverage Report Pytest Plugin"
 readme = "README.md"
 authors = [
@@ -32,7 +32,7 @@ dev = [
 
 # API COVERAGE
 [tool.pytest_api_cov]
-# fail_under = 95.0  # in the command
+fail_under = 70
 show_covered_endpoints = true
 show_uncovered_endpoints = true
 show_excluded_endpoints = true
@@ -51,7 +51,6 @@ exclude_lines = [
     "if TYPE_CHECKING:",
 ]
 show_missing = true
-fail_under = 70.0
 
 
 [build-system]
