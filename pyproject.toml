@@ -1,23 +1,21 @@
 [project]
 name = "pytest-api-cov"
-version = "1.0.1"
-description = "Api Coverage Report Pytest Plugin"
+version = "1.0.2"
+description = "Pytest Plugin to provide API Coverage statistics for Python Web Frameworks"
 readme = "README.md"
-authors = [
-    {name = "Barnaby Gill", email = "barnabasgill@gmail.com"},
-]
-license = {text = "Apache-2.0"}
+authors = [{ name = "Barnaby Gill", email = "barnabasgill@gmail.com" }]
+license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
 
 dependencies = [
-    "fastapi>=0.116.1",
-    "flask>=3.1.1",
-    "httpx>=0.28.1",
-    "pydantic>=2.11.7",
-    "rich>=14.0.0",
-    "starlette>=0.47.1",
-    "tomli>=2.2.1",
-    "pytest>=8.4.1",
+    "fastapi>=0.68.0",
+    "flask>=2.0.0",
+    "httpx>=0.20.0",
+    "pydantic>=2.0.0",
+    "rich>=10.0.0",
+    "starlette>=0.14.0",
+    "tomli>=1.2.0",
+    "pytest>=6.0.0",
 ]
 
 [dependency-groups]
@@ -36,9 +34,7 @@ fail_under = 70
 show_covered_endpoints = true
 show_uncovered_endpoints = true
 show_excluded_endpoints = true
-exclusion_patterns = [
-    "xyz",
-]
+exclusion_patterns = ["xyz"]
 report_path = "reports/pytest_api_cov.json"
 
 [tool.pytest.ini_options]
@@ -46,10 +42,7 @@ testpaths = ["tests/unit", "tests/integration", "example/tests"]
 pythonpath = ["src"]
 
 [tool.coverage.report]
-exclude_lines = [
-    'if __name__ == "__main__":',
-    "if TYPE_CHECKING:",
-]
+exclude_lines = ['if __name__ == "__main__":', "if TYPE_CHECKING:"]
 show_missing = true
 
 
@@ -61,12 +54,7 @@ build-backend = "hatchling.build"
 packages = ["src/pytest_api_cov"]
 
 [tool.hatch.build.targets.sdist]
-include = [
-    "src/pytest_api_cov/",
-    "README.md",
-    "LICENSE",
-    "pyproject.toml",
-]
+include = ["src/pytest_api_cov/", "README.md", "LICENSE", "pyproject.toml"]
 
 # [[tool.uv.index]]
 # name = "testpypi"

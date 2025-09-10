@@ -65,10 +65,21 @@ def auto_discover_app() -> Optional[Any]:
                                         f"✅ Auto-discovered {type(app).__name__} app in {filename} as '{attr_name}'"
                                     )
                                     # Check if there are more files to scan
-                                    remaining_files = [f for f in [p[0] for p in common_patterns[common_patterns.index((filename, attr_names)):]] if os.path.exists(f) and f != filename]
+                                    remaining_files = [
+                                        f
+                                        for f in [
+                                            p[0]
+                                            for p in common_patterns[common_patterns.index((filename, attr_names)) :]
+                                        ]
+                                        if os.path.exists(f) and f != filename
+                                    ]
                                     if remaining_files:
-                                        logger.debug(f"> Note: Also found files {remaining_files} but using first discovered app")
-                                        logger.debug(f"> To use a different app, create a conftest.py with an 'app' fixture")
+                                        logger.debug(
+                                            f"> Note: Also found files {remaining_files} but using first discovered app"
+                                        )
+                                        logger.debug(
+                                            "> To use a different app, create a conftest.py with an 'app' fixture"
+                                        )
                                     return app
                             else:
                                 logger.debug(f"> Found '{attr_name}' in {filename} but it's not a supported framework")
@@ -80,9 +91,9 @@ def auto_discover_app() -> Optional[Any]:
     # If we get here, no apps were found
     if found_files:
         logger.debug(f"> Found files {found_files} but no supported Flask/FastAPI apps in them")
-        logger.debug(f"> If your app is in one of these files with a different variable name,")
-        logger.debug(f"> create a conftest.py with an 'app' fixture to specify it")
-    
+        logger.debug("> If your app is in one of these files with a different variable name,")
+        logger.debug("> create a conftest.py with an 'app' fixture to specify it")
+
     logger.debug("> No app auto-discovered")
     return None
 

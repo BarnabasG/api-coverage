@@ -49,7 +49,9 @@ build:
 	@uv sync
 	@uv build
 
-publish:
+pipeline: format clean build test test-example test-example-parallel
+
+publish: pipeline
 	@echo "Publishing plugin..."
 	@uv publish --token $(PYPI_TOKEN)
 

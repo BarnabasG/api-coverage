@@ -63,7 +63,7 @@ from {module_path} import {app_variable}
 @pytest.fixture
 def app():
     """Provide the {framework} app for API coverage testing.
-    
+
     You can import from any location - just change the import path above
     to match your project structure.
     """

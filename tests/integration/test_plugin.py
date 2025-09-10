@@ -233,15 +233,15 @@ def test_custom_app_location_via_fixture(pytester):
                     response = coverage_client.get("/")
                     assert response.status_code == 200
                     assert response.data == b"Hello from custom location"
-            """
+            """,
         }
     )
-    
+
     result = pytester.runpytest(
         "--api-cov-report",
         "--api-cov-show-covered-endpoints",
     )
-    
+
     assert result.ret == 0
     output = result.stdout.str()
     assert "API Coverage Report" in output
@@ -259,7 +259,7 @@ def test_multiple_auto_discover_files_uses_first(pytester):
             "app.py": """
                 from flask import Flask
                 app = Flask(__name__)
-                
+
                 @app.route("/from-app-py")
                 def from_app():
                     return "From app.py"
@@ -267,7 +267,7 @@ def test_multiple_auto_discover_files_uses_first(pytester):
             "main.py": """
                 from flask import Flask
                 app = Flask(__name__)
-                
+
                 @app.route("/from-main-py")
                 def from_main():
                     return "From main.py"
@@ -277,12 +277,12 @@ def test_multiple_auto_discover_files_uses_first(pytester):
                     # Should use app.py since it comes first in the pattern list
                     response = coverage_client.get("/from-app-py")
                     assert response.status_code == 200
-            """
+            """,
         }
     )
-    
+
     result = pytester.runpytest("--api-cov-report", "-v")
-    
+
     assert result.ret == 0
     output = result.stdout.str()
     assert "API Coverage Report" in output
@@ -297,7 +297,7 @@ def test_override_auto_discovery_with_fixture(pytester):
             "app.py": """
                 from flask import Flask
                 wrong_app = Flask(__name__)
-                
+
                 @wrong_app.route("/wrong")
                 def wrong():
                     return "Wrong app"
@@ -305,7 +305,7 @@ def test_override_auto_discovery_with_fixture(pytester):
             "my_real_app.py": """
                 from flask import Flask
                 real_app = Flask(__name__)
-                
+
                 @real_app.route("/correct")
                 def correct():
                     return "Correct app"
@@ -313,7 +313,7 @@ def test_override_auto_discovery_with_fixture(pytester):
             "conftest.py": """
                 import pytest
                 from my_real_app import real_app
-                
+
                 @pytest.fixture
                 def app():
                     return real_app
@@ -323,12 +323,12 @@ def test_override_auto_discovery_with_fixture(pytester):
                     # Should use the app from fixture, not auto-discovery
                     response = coverage_client.get("/correct")
                     assert response.status_code == 200
-            """
+            """,
         }
     )
-    
+
     result = pytester.runpytest("--api-cov-report")
-    
+
     assert result.ret == 0
     output = result.stdout.str()
     assert "API Coverage Report" in output
@@ -344,7 +344,7 @@ def test_auto_discover_file_exists_but_wrong_variable_name(pytester):
             "app.py": """
                 from flask import Flask
                 my_custom_app_name = Flask(__name__)
-                
+
                 @my_custom_app_name.route("/")
                 def root():
                     return "Hello"
@@ -352,7 +352,7 @@ def test_auto_discover_file_exists_but_wrong_variable_name(pytester):
             "conftest.py": """
                 import pytest
                 from app import my_custom_app_name
-                
+
                 @pytest.fixture
                 def app():
                     return my_custom_app_name
@@ -361,12 +361,12 @@ def test_auto_discover_file_exists_but_wrong_variable_name(pytester):
                 def test_endpoint(coverage_client):
                     response = coverage_client.get("/")
                     assert response.status_code == 200
-            """
+            """,
         }
     )
-    
+
     result = pytester.runpytest("--api-cov-report")
-    
+
     assert result.ret == 0
     output = result.stdout.str()
     assert "API Coverage Report" in output
