@@ -30,31 +30,59 @@ def categorise_endpoints(
 ) -> Tuple[List[str], List[str], List[str]]:
     """Categorise endpoints into covered, uncovered, and excluded.
 
-    Exclusion patterns support simple wildcard matching:
+    Exclusion patterns support simple wildcard matching with negation:
     - Use * for wildcard (matches any characters)
+    - Use ! at the start to negate a pattern (include what would otherwise be excluded)
     - All other characters are matched literally
-    - Examples: "/admin/*", "/health", "/docs/*"
+    - Examples: "/admin/*", "/health", "!users/bob" (negates exclusion)
+    - Pattern order matters: exclusions are applied first, then negations override them
     """
     covered, uncovered, excluded = [], [], []
 
-    compiled_patterns = (
-        [re.compile("^" + re.escape(pattern).replace(r"\*", ".*") + "$") for pattern in exclusion_patterns]
-        if exclusion_patterns
-        else None
-    )
+    if not exclusion_patterns:
+        compiled_exclusions = None
+        compiled_negations = None
+    else:
+        # Separate exclusion and negation patterns
+        exclusion_only = [p for p in exclusion_patterns if not p.startswith("!")]
+        negation_only = [p[1:] for p in exclusion_patterns if p.startswith("!")]  # Remove the '!' prefix
+
+        compiled_exclusions = (
+            [re.compile("^" + re.escape(pattern).replace(r"\*", ".*") + "$") for pattern in exclusion_only]
+            if exclusion_only
+            else None
+        )
+        compiled_negations = (
+            [re.compile("^" + re.escape(pattern).replace(r"\*", ".*") + "$") for pattern in negation_only]
+            if negation_only
+            else None
+        )
 
     for endpoint in endpoints:
         # Check exclusion patterns against both full "METHOD /path" and just "/path"
         is_excluded = False
-        if compiled_patterns:
+        if compiled_exclusions:
             # Extract path from "METHOD /path" format for pattern matching
             if " " in endpoint:
                 _, path_only = endpoint.split(" ", 1)
-                is_excluded = any(p.match(endpoint) for p in compiled_patterns) or any(
-                    p.match(path_only) for p in compiled_patterns
+                is_excluded = any(p.match(endpoint) for p in compiled_exclusions) or any(
+                    p.match(path_only) for p in compiled_exclusions
                 )
             else:
-                is_excluded = any(p.match(endpoint) for p in compiled_patterns)
+                is_excluded = any(p.match(endpoint) for p in compiled_exclusions)
+
+        # Check negation patterns - these override exclusions
+        if is_excluded and compiled_negations:
+            if " " in endpoint:
+                _, path_only = endpoint.split(" ", 1)
+                is_negated = any(p.match(endpoint) for p in compiled_negations) or any(
+                    p.match(path_only) for p in compiled_negations
+                )
+            else:
+                is_negated = any(p.match(endpoint) for p in compiled_negations)
+
+            if is_negated:
+                is_excluded = False  # Negation overrides exclusion
 
         if is_excluded:
             excluded.append(endpoint)

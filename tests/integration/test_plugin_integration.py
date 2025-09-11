@@ -372,3 +372,72 @@ def test_auto_discover_file_exists_but_wrong_variable_name(pytester):
     assert "API Coverage Report" in output
     assert "Total API Coverage: 100.0%" in output
     # The test should pass, meaning it used the app fixture with custom variable name
+
+
+def test_exclusion_patterns_with_negation(pytester):
+    """Test exclusion patterns with negation support."""
+    pytester.makepyfile(
+        """
+        from flask import Flask
+        import pytest
+
+        @pytest.fixture
+        def app():
+            app = Flask(__name__)
+
+            @app.route("/users/alice")
+            def user_alice():
+                return "Alice"
+
+            @app.route("/users/bob")
+            def user_bob():
+                return "Bob"
+
+            @app.route("/users/charlie")
+            def user_charlie():
+                return "Charlie"
+
+            @app.route("/admin/settings")
+            def admin_settings():
+                return "Admin Settings"
+
+            return app
+
+        def test_alice(coverage_client):
+            coverage_client.get("/users/alice")
+
+        def test_bob(coverage_client):
+            coverage_client.get("/users/bob")
+
+        def test_admin(coverage_client):
+            coverage_client.get("/admin/settings")
+    """
+    )
+
+    # Test with exclusion pattern and negation: exclude all users except bob
+    result = pytester.runpytest(
+        "--api-cov-report",
+        "--api-cov-exclusion-patterns=/users/*",
+        "--api-cov-exclusion-patterns=!/users/bob",
+        "--api-cov-show-covered-endpoints",
+        "--api-cov-show-excluded-endpoints",
+        "--api-cov-force-sugar-disabled",  # Force ASCII symbols for deterministic testing
+    )
+
+    assert result.ret == 0
+    output = result.stdout.str()
+    assert "API Coverage Report" in output
+
+    # Bob should be covered (negated from exclusion)
+    assert "GET    /users/bob" in output
+    assert "[.] GET    /users/bob" in output
+
+    # Alice and Charlie should be excluded
+    assert "GET    /users/alice" in output
+    assert "GET    /users/charlie" in output
+    assert "[-] GET    /users/alice" in output
+    assert "[-] GET    /users/charlie" in output
+
+    # Admin should be uncovered (not excluded, not called in this specific test run)
+    # Note: This depends on which tests actually run, so we'll be flexible here
+    assert "Total API Coverage:" in output

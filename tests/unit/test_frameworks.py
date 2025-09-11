@@ -53,7 +53,7 @@ class TestFlaskAdapter:
         recorder = {}
         client = self.adapter.get_tracked_client(recorder, "test_name")
         assert hasattr(client, "open")
-        assert "TrackingFlaskClient" in str(type(client)) or hasattr(client, "open")
+        assert "TrackingFlaskClient" in str(type(client))
 
     def test_flask_tracking_client_open_method(self):
         """Test the TrackingFlaskClient open method."""
@@ -121,21 +121,30 @@ class TestFastAPIAdapter:
         recorder = {}
         client = self.adapter.get_tracked_client(recorder, "test_name")
         assert hasattr(client, "send")
-        assert "TrackingFastAPIClient" in str(type(client)) or hasattr(client, "send")
+        assert "TrackingFastAPIClient" in str(type(client))
 
     def test_fastapi_tracking_client_send_method(self):
-        """Test the TrackingFastAPIClient send method."""
-        recorder = {}
+        """Test the TrackingFastAPIClient send method exists and can be called."""
+        from pytest_api_cov.models import ApiCallRecorder
+
+        recorder = ApiCallRecorder()
         client = self.adapter.get_tracked_client(recorder, "test_name")
 
-        client.send = Mock(return_value="response")
+        # Verify the send method exists and is callable
+        assert hasattr(client, "send")
+        assert callable(getattr(client, "send"))
 
-        mock_request = Mock()
-        mock_request.url.path = "/test"
+        # Test with a mock to verify it can be called without errors
+        with patch.object(client.__class__.__bases__[0], "send", return_value="response") as mock_send:
+            mock_request = Mock()
+            mock_request.method = "GET"
+            mock_request.url.path = "/test"
 
-        response = client.send(mock_request)
-        assert response == "response"
-        assert "/test" in recorder or hasattr(client, "send")
+            response = client.send(mock_request)
+            assert response == "response"
+            mock_send.assert_called_once_with(mock_request)
+            # Verify tracking happened
+            assert "GET /test" in recorder.calls
 
 
 class TestBaseAdapter:

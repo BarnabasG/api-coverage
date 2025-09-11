@@ -241,14 +241,17 @@ show_uncovered_endpoints = true
 show_covered_endpoints = false
 show_excluded_endpoints = false
 
-# Exclude endpoints from coverage using simple wildcard patterns
+# Exclude endpoints from coverage using wildcard patterns with negation support
 # Use * for wildcard matching, all other characters are matched literally
+# Use ! at the start to negate a pattern (include what would otherwise be excluded)
 exclusion_patterns = [
     "/health",        # Exact match
     "/metrics",       # Exact match
     "/docs/*",        # Wildcard: matches /docs/swagger, /docs/openapi, etc.
     "/admin/*",       # Wildcard: matches all admin endpoints
-    "/api/v1.0/*"     # Exact version match (won't match /api/v1x0/*)
+    "!/admin/public", # Negation: include /admin/public even though /admin/* excludes it
+    "/api/v1.0/*",    # Exact version match (won't match /api/v1x0/*)
+    "!/api/v1.0/health" # Negation: include /api/v1.0/health even though /api/v1.0/* excludes it
 ]
 
 # Save detailed JSON report
@@ -290,8 +293,11 @@ pytest --api-cov-report --api-cov-show-uncovered-endpoints=false
 # Save JSON report
 pytest --api-cov-report --api-cov-report-path=api_coverage.json
 
-# Exclude specific endpoints (supports wildcards)
+# Exclude specific endpoints (supports wildcards and negation)
 pytest --api-cov-report --api-cov-exclusion-patterns="/health" --api-cov-exclusion-patterns="/docs/*"
+
+# Exclude with negation (exclude all admin except admin/public)
+pytest --api-cov-report --api-cov-exclusion-patterns="/admin/*" --api-cov-exclusion-patterns="!/admin/public"
 
 # Verbose logging (shows discovery process)
 pytest --api-cov-report -v
