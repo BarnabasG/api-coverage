@@ -3,7 +3,7 @@
 import os
 from unittest.mock import Mock, patch
 
-import Path
+from path import Path
 import pytest
 import tomli
 from pydantic import ValidationError
