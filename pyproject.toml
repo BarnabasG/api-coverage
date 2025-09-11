@@ -21,6 +21,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "mypy>=1.17.0",
+    "path>=17.1.1",
     "pytest-cov>=6.2.1",
     "pytest-sugar>=1.0.0",
     "pytest-xdist>=3.8.0",
@@ -143,7 +144,10 @@ lint.ignore = [
     "PLR2004",
     "SLF001",
     "FBT001",
-    "PLR0913"
+    "PLR0913",
+    "C901",
+    "N806",
+    "D"
 ]
 
 [tool.mypy]

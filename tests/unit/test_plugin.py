@@ -59,11 +59,10 @@ class TestSupportedFramework:
         """Test auto-discovery when no app files exist."""
         result = auto_discover_app()
         assert result is None
+        mock_exists.assert_called()
 
-    @patch("os.path.exists", return_value=True)
     @patch("importlib.util.spec_from_file_location")
-    @patch("importlib.util.module_from_spec")
-    def test_auto_discover_app_import_error(self, mock_module_from_spec, mock_spec_from_file, mock_exists):
+    def test_auto_discover_app_import_error(self, mock_spec_from_file):
         """Test auto-discovery when import fails."""
         mock_spec_from_file.return_value = None
         result = auto_discover_app()
@@ -300,7 +299,7 @@ class TestPluginHooks:
         mock_config.pluginmanager.register.assert_called_once()
 
     @pytest.mark.parametrize(
-        "verbose_level,expected_log_level",
+        ("verbose_level", "expected_log_level"),
         [
             (0, "WARNING"),  # normal run
             (1, "INFO"),  # -v

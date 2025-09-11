@@ -23,7 +23,7 @@ class TestDetectFrameworkAndApp:
             assert result is None
 
     @pytest.mark.parametrize(
-        "framework,import_stmt,var_name,expected_file,expected_var",
+        ("framework", "import_stmt", "var_name", "expected_file", "expected_var"),
         [
             ("FastAPI", "from fastapi import FastAPI", "app", "app.py", "app"),
             ("Flask", "from flask import Flask", "application", "app.py", "application"),
@@ -255,7 +255,7 @@ class TestCmdInit:
     @patch("pytest_api_cov.cli.detect_framework_and_app")
     @patch("builtins.open", new_callable=mock_open)
     @patch("builtins.print")
-    def test_init_no_app_detected(self, mock_print, mock_file, mock_detect):
+    def test_init_no_app_detected(self, mock_print, mock_file, mock_detect):  # noqa: ARG002
         """Test init when no app is detected."""
         mock_detect.return_value = None
 
@@ -299,17 +299,15 @@ class TestMain:
         assert result == 0
         mock_cmd_init.assert_called_once()
 
-    @patch("builtins.print")
     @patch("sys.argv", ["pytest-api-cov"])
-    def test_main_no_command(self, mock_print):
+    def test_main_no_command(self):
         """Test main with no command (should show help)."""
         result = main()
 
         assert result == 1
 
-    @patch("builtins.print")
     @patch("sys.argv", ["pytest-api-cov", "unknown"])
-    def test_main_unknown_command(self, mock_print):
+    def test_main_unknown_command(self):
         """Test main with unknown command."""
         with pytest.raises(SystemExit) as exc_info:
             main()

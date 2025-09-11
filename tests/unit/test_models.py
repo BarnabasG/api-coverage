@@ -368,7 +368,7 @@ class TestSessionData:
         assert "test4" in session.recorder.calls["/string"]
 
     @pytest.mark.parametrize(
-        "worker_recorder,worker_endpoints,expected_recorder_len,expected_endpoints",
+        ("worker_recorder", "worker_endpoints", "expected_recorder_len", "expected_endpoints"),
         [
             ({}, ["GET /worker_endpoint"], 1, ["GET /worker_endpoint"]),
             ({"GET /worker": ["worker_test"]}, [], 1, []),

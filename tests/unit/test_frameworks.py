@@ -78,9 +78,11 @@ class TestFlaskAdapter:
         recorder = {}
         client = self.adapter.get_tracked_client(recorder, "test_func")
 
-        with patch.object(client.__class__.__bases__[0], "open", return_value=Mock()) as mock_super_open:
-            with patch.object(self.mock_app.url_map, "iter_rules", side_effect=Exception("Unexpected error")):
-                client.open("/test", method="GET")
+        with (
+            patch.object(client.__class__.__bases__[0], "open", return_value=Mock()) as mock_super_open,
+            patch.object(self.mock_app.url_map, "iter_rules", side_effect=Exception("Unexpected error")),
+        ):
+            client.open("/test", method="GET")
 
         mock_super_open.assert_called_once()
         assert recorder == {}

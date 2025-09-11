@@ -164,7 +164,7 @@ class TestCoverageCalculationAndReporting:
     """Tests for coverage computation and report generation."""
 
     @pytest.mark.parametrize(
-        "covered,uncovered,expected",
+        ("covered", "uncovered", "expected"),
         [(10, 0, 100.0), (0, 10, 0.0), (5, 5, 50.0), (3, 1, 75.0), (0, 0, 0.0)],
     )
     def test_compute_coverage(self, covered, uncovered, expected):
@@ -242,7 +242,7 @@ class TestCoverageCalculationAndReporting:
         assert "No endpoints discovered" in error_print.args[0]
 
     @pytest.mark.parametrize(
-        "force_sugar,expected_symbols",
+        ("force_sugar", "expected_symbols"),
         [
             (True, ["❌", "✅", "🚫"]),  # Unicode symbols
             (False, ["[X]", "[.]", "[-]"]),  # ASCII symbols
