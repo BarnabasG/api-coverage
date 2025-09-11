@@ -30,9 +30,8 @@ class ApiCallRecorder(BaseModel):
         if " " in endpoint_key:
             method, endpoint = endpoint_key.split(" ", 1)
             return method, endpoint
-        else:
-            # Handle legacy format without method
-            return "GET", endpoint_key
+        # Handle legacy format without method
+        return "GET", endpoint_key
 
     def merge(self, other: "ApiCallRecorder") -> None:
         """Merge another recorder's data into this one."""

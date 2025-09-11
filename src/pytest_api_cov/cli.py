@@ -7,8 +7,7 @@ from typing import Optional, Tuple
 
 
 def detect_framework_and_app() -> Optional[Tuple[str, str, str]]:
-    """
-    Detect framework and app location.
+    """Detect framework and app location.
     Returns (framework, file_path, app_variable) or None.
     """
     import glob
@@ -217,9 +216,8 @@ def main() -> int:
 
     if args.command == "init":
         return cmd_init()
-    else:
-        parser.print_help()
-        return 1
+    parser.print_help()
+    return 1
 
 
 if __name__ == "__main__":

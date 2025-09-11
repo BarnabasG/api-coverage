@@ -173,8 +173,7 @@ def pytest_sessionstart(session: pytest.Session) -> None:
 
 
 def create_coverage_fixture(fixture_name: str, existing_fixture_name: Optional[str] = None) -> Any:
-    """
-    Helper function to create a coverage-enabled fixture with a custom name.
+    """Helper function to create a coverage-enabled fixture with a custom name.
 
     Args:
         fixture_name: The name for the new fixture
@@ -192,6 +191,7 @@ def create_coverage_fixture(fixture_name: str, existing_fixture_name: Optional[s
 
         # Wrap an existing fixture
         flask_client = create_coverage_fixture('flask_client', 'original_flask_client')
+
     """
 
     def fixture_func(request: pytest.FixtureRequest) -> Any:
@@ -232,16 +232,15 @@ def create_coverage_fixture(fixture_name: str, existing_fixture_name: Optional[s
 
         if existing_client:
             client = existing_client
-        else:
-            if app and is_supported_framework(app):
-                from .frameworks import get_framework_adapter
+        elif app and is_supported_framework(app):
+            from .frameworks import get_framework_adapter
 
-                adapter = get_framework_adapter(app)
-                client = adapter.get_tracked_client(coverage_data.recorder, request.node.name)
-                yield client
-                return
-            else:
-                pytest.skip("No existing fixture specified and no valid app for creating new client")
+            adapter = get_framework_adapter(app)
+            client = adapter.get_tracked_client(coverage_data.recorder, request.node.name)
+            yield client
+            return
+        else:
+            pytest.skip("No existing fixture specified and no valid app for creating new client")
 
         wrapped_client = wrap_client_with_coverage(client, coverage_data.recorder, request.node.name)
         yield wrapped_client
@@ -294,8 +293,7 @@ def get_app_from_fixture_or_auto_discover(request: pytest.FixtureRequest) -> Any
 
 @pytest.fixture
 def coverage_client(request: pytest.FixtureRequest) -> Any:
-    """
-    Smart auto-discovering test coverage_client that records API calls for coverage.
+    """Smart auto-discovering test coverage_client that records API calls for coverage.
 
     Tries to find an 'app' fixture first, then auto-discovers apps in common locations.
     Can also wrap existing custom fixtures if configured.

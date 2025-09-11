@@ -64,8 +64,7 @@ def supports_unicode() -> bool:
 
 
 def get_pytest_api_cov_report_config(session_config: Any) -> ApiCoverageReportConfig:
-    """
-    Get the final API coverage configuration by merging sources.
+    """Get the final API coverage configuration by merging sources.
     Priority: CLI > pyproject.toml > Defaults
     """
     toml_config = read_toml_config()

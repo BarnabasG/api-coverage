@@ -87,7 +87,7 @@ def categorise_endpoints(
         if is_excluded:
             excluded.append(endpoint)
             continue
-        elif contains_escape_characters(endpoint):
+        if contains_escape_characters(endpoint):
             pattern = endpoint_to_regex(endpoint)
             is_covered = any(pattern.match(ep) for ep in called_data)
         else:
@@ -154,7 +154,6 @@ def generate_pytest_api_cov_report(
     discovered_endpoints: List[str],
 ) -> int:
     """Generate and print the API coverage report, returning an exit status."""
-
     console = Console()
 
     if not discovered_endpoints:

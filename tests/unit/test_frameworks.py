@@ -131,7 +131,7 @@ class TestFastAPIAdapter:
         client = self.adapter.get_tracked_client(recorder, "test_name")
 
         assert hasattr(client, "send")
-        assert callable(getattr(client, "send"))
+        assert callable(client.send)
 
         with patch.object(client.__class__.__bases__[0], "send", return_value="response") as mock_send:
             mock_request = Mock()

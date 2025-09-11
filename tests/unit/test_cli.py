@@ -103,10 +103,9 @@ server = Flask(__name__)
             def mock_open_handler(path, mode="r"):
                 if path == "app.py":
                     return mock_open(read_data="# foobar")()
-                elif path == "server.py":
+                if path == "server.py":
                     return mock_open(read_data=flask_content)()
-                else:
-                    return mock_open(read_data="")()
+                return mock_open(read_data="")()
 
             with patch("builtins.open", side_effect=mock_open_handler):
                 result = detect_framework_and_app()

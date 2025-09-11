@@ -95,7 +95,7 @@ def get_framework_adapter(app: Any) -> BaseAdapter:
 
     if module_name == "flask" and app_type == "Flask":
         return FlaskAdapter(app)
-    elif module_name == "fastapi" and app_type == "FastAPI":
+    if module_name == "fastapi" and app_type == "FastAPI":
         return FastAPIAdapter(app)
 
     raise TypeError(f"Unsupported application type: {app_type}. pytest-api-coverage supports Flask and FastAPI.")
