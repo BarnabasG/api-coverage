@@ -137,7 +137,7 @@ Total API Coverage: 50.0%  # 2 out of 4 method-endpoint combinations
 ```
 
 ### Endpoint Grouping
-To group all methods on an endpoint are together, use:
+To group all methods by endpoint, use:
 
 ```bash
 pytest --api-cov-report --api-cov-group-methods-by-endpoint

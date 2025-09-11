@@ -28,7 +28,6 @@ def test_plugin_end_to_end(pytester):
             coverage_client.get("/")
 
         def test_uncovered(coverage_client):
-            # This test calls no endpoints
             pass
     """
     )
@@ -88,7 +87,6 @@ def test_custom_fixture_wrapping_flask(pytester):
         @pytest.fixture
         def my_custom_client(app):
             client = app.test_client()
-            # Add some custom setup
             client.environ_base['HTTP_AUTHORIZATION'] = 'Bearer test-token'
             return client
 
@@ -140,7 +138,6 @@ def test_custom_fixture_wrapping_fastapi(pytester):
         @pytest.fixture
         def my_api_client(app):
             client = TestClient(app)
-            # Add some custom setup
             client.headers.update({"Authorization": "Bearer test-token"})
             return client
 
@@ -202,7 +199,6 @@ def test_custom_fixture_fallback_when_not_found(pytester):
 
 def test_custom_app_location_via_fixture(pytester):
     """Test that apps can be imported from any custom location via app fixture."""
-    # Create a nested directory structure
     pytester.makepyfile(
         **{
             "my_project/backend/server.py": """
@@ -274,7 +270,6 @@ def test_multiple_auto_discover_files_uses_first(pytester):
             """,
             "test_multiple.py": """
                 def test_endpoint(coverage_client):
-                    # Should use app.py since it comes first in the pattern list
                     response = coverage_client.get("/from-app-py")
                     assert response.status_code == 200
             """,
@@ -287,7 +282,6 @@ def test_multiple_auto_discover_files_uses_first(pytester):
     output = result.stdout.str()
     assert "API Coverage Report" in output
     assert "Total API Coverage: 100.0%" in output
-    # The test should pass, meaning it used app.py (first in priority order)
 
 
 def test_override_auto_discovery_with_fixture(pytester):
@@ -320,7 +314,6 @@ def test_override_auto_discovery_with_fixture(pytester):
             """,
             "test_override.py": """
                 def test_correct_app(coverage_client):
-                    # Should use the app from fixture, not auto-discovery
                     response = coverage_client.get("/correct")
                     assert response.status_code == 200
             """,
@@ -333,8 +326,6 @@ def test_override_auto_discovery_with_fixture(pytester):
     output = result.stdout.str()
     assert "API Coverage Report" in output
     assert "Total API Coverage: 100.0%" in output
-    # The test should pass, meaning it used the correct app from fixture
-    # (if it used auto-discovery, it would try to access /wrong and fail)
 
 
 def test_auto_discover_file_exists_but_wrong_variable_name(pytester):
@@ -371,7 +362,6 @@ def test_auto_discover_file_exists_but_wrong_variable_name(pytester):
     output = result.stdout.str()
     assert "API Coverage Report" in output
     assert "Total API Coverage: 100.0%" in output
-    # The test should pass, meaning it used the app fixture with custom variable name
 
 
 def test_exclusion_patterns_with_negation(pytester):
@@ -414,30 +404,25 @@ def test_exclusion_patterns_with_negation(pytester):
     """
     )
 
-    # Test with exclusion pattern and negation: exclude all users except bob
     result = pytester.runpytest(
         "--api-cov-report",
         "--api-cov-exclusion-patterns=/users/*",
         "--api-cov-exclusion-patterns=!/users/bob",
         "--api-cov-show-covered-endpoints",
         "--api-cov-show-excluded-endpoints",
-        "--api-cov-force-sugar-disabled",  # Force ASCII symbols for deterministic testing
+        "--api-cov-force-sugar-disabled",
     )
 
     assert result.ret == 0
     output = result.stdout.str()
     assert "API Coverage Report" in output
 
-    # Bob should be covered (negated from exclusion)
     assert "GET    /users/bob" in output
     assert "[.] GET    /users/bob" in output
 
-    # Alice and Charlie should be excluded
     assert "GET    /users/alice" in output
     assert "GET    /users/charlie" in output
     assert "[-] GET    /users/alice" in output
     assert "[-] GET    /users/charlie" in output
 
-    # Admin should be uncovered (not excluded, not called in this specific test run)
-    # Note: This depends on which tests actually run, so we'll be flexible here
     assert "Total API Coverage:" in output

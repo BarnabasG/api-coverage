@@ -130,11 +130,9 @@ class TestFastAPIAdapter:
         recorder = ApiCallRecorder()
         client = self.adapter.get_tracked_client(recorder, "test_name")
 
-        # Verify the send method exists and is callable
         assert hasattr(client, "send")
         assert callable(getattr(client, "send"))
 
-        # Test with a mock to verify it can be called without errors
         with patch.object(client.__class__.__bases__[0], "send", return_value="response") as mock_send:
             mock_request = Mock()
             mock_request.method = "GET"
@@ -143,7 +141,6 @@ class TestFastAPIAdapter:
             response = client.send(mock_request)
             assert response == "response"
             mock_send.assert_called_once_with(mock_request)
-            # Verify tracking happened
             assert "GET /test" in recorder.calls
 
 
