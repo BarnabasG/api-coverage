@@ -1,6 +1,6 @@
 [project]
 name = "pytest-api-cov"
-version = "1.0.2"
+version = "1.1.0"
 description = "Pytest Plugin to provide API Coverage statistics for Python Web Frameworks"
 readme = "README.md"
 authors = [{ name = "Barnaby Gill", email = "barnabasgill@gmail.com" }]

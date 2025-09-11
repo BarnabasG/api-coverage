@@ -34,33 +34,6 @@ class ApiCallRecorder(BaseModel):
             # Handle legacy format without method
             return "GET", endpoint_key
 
-    def get_called_endpoints(self) -> List[str]:
-        """Get list of all endpoints that have been called."""
-        return list(self.calls.keys())
-
-    def get_called_methods_for_endpoint(self, endpoint: str) -> List[str]:
-        """Get list of HTTP methods called for a specific endpoint."""
-        methods = []
-        for key in self.calls.keys():
-            method, ep = self._parse_endpoint_key(key)
-            if ep == endpoint:
-                methods.append(method)
-        return methods
-
-    def get_called_endpoints_for_method(self, method: str) -> List[str]:
-        """Get list of endpoints called with a specific HTTP method."""
-        endpoints = []
-        method_upper = method.upper()
-        for key in self.calls.keys():
-            m, endpoint = self._parse_endpoint_key(key)
-            if m == method_upper:
-                endpoints.append(endpoint)
-        return endpoints
-
-    def get_callers(self, endpoint: str) -> Set[str]:
-        """Get the set of test names that called a specific endpoint."""
-        return self.calls.get(endpoint, set())
-
     def merge(self, other: "ApiCallRecorder") -> None:
         """Merge another recorder's data into this one."""
         for endpoint, callers in other.calls.items():

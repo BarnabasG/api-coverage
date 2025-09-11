@@ -50,9 +50,9 @@ class TestFlaskIntegration:
             assert "GET /" in recorder
             assert "GET /users/<user_id>" in recorder
             assert "GET /items" in recorder
-            assert "test_flask_tracking" in recorder.get_callers("/")
-            assert "test_flask_tracking" in recorder.get_callers("/users/<user_id>")
-            assert "test_flask_tracking" in recorder.get_callers("/items")
+            assert "test_flask_tracking" in recorder.calls["GET /"]
+            assert "test_flask_tracking" in recorder.calls["GET /users/<user_id>"]
+            assert "test_flask_tracking" in recorder.calls["GET /items"]
 
         except ImportError:
             pytest.skip("Flask not available for integration testing")
@@ -75,8 +75,8 @@ class TestFlaskIntegration:
             adapter = FlaskAdapter(app)
             endpoints = adapter.get_endpoints()
 
-            assert "/static/<path:filename>" not in endpoints
-            assert "/api/users" in endpoints
+            assert "/static/<path:filename>" not in [ep.split(" ", 1)[1] if " " in ep else ep for ep in endpoints]
+            assert "GET /api/users" in endpoints
 
         except ImportError:
             pytest.skip("Flask not available for integration testing")
@@ -107,9 +107,9 @@ class TestFastAPIIntegration:
             adapter = FastAPIAdapter(app)
 
             endpoints = adapter.get_endpoints()
-            assert "/" in endpoints
-            assert "/users/{user_id}" in endpoints
-            assert "/items" in endpoints
+            assert "GET /" in endpoints
+            assert "GET /users/{user_id}" in endpoints
+            assert "POST /items" in endpoints
 
             recorder = ApiCallRecorder()
             client = adapter.get_tracked_client(recorder, "test_fastapi_tracking")
@@ -123,14 +123,14 @@ class TestFastAPIIntegration:
             response = client.post("/items")
             assert response.status_code == 200
 
-            assert "/" in recorder
-            assert "/items" in recorder
-            assert "test_fastapi_tracking" in recorder.get_callers("/")
-            assert "test_fastapi_tracking" in recorder.get_callers("/items")
+            assert "GET /" in recorder
+            assert "POST /items" in recorder
+            assert "test_fastapi_tracking" in recorder.calls["GET /"]
+            assert "test_fastapi_tracking" in recorder.calls["POST /items"]
 
-            user_paths = [k for k in recorder.keys() if k.startswith("/users/")]
+            user_paths = [k for k in recorder.keys() if k.startswith("GET /users/")]
             assert len(user_paths) > 0
-            assert "test_fastapi_tracking" in recorder.get_callers(user_paths[0])
+            assert "test_fastapi_tracking" in recorder.calls[user_paths[0]]
 
         except ImportError:
             pytest.skip("FastAPI not available for integration testing")
@@ -155,7 +155,7 @@ class TestFastAPIIntegration:
                 adapter = FastAPIAdapter(app)
                 endpoints = adapter.get_endpoints()
 
-                assert "/api/users" in endpoints
+                assert "GET /api/users" in endpoints
                 assert "/static" not in endpoints
 
         except ImportError:
