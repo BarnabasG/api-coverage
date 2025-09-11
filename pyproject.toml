@@ -71,10 +71,7 @@ pytest-api-cov = "pytest_api_cov.cli:main"
 src = ["src", "tests", "example"]
 line-length = 120
 fix = true
-
-[tool.ruff.lint]
-select = ["E", "F", "W", "I"] # Standard flake8 and isort rules
-extend-select = [
+lint.select = [
     "E", "W",   # Pydocstyle
     "D",        # Pydocstyle
     "F",        # Pyflakes rules
@@ -92,6 +89,32 @@ extend-select = [
     "TD",       # Be diligent with TODO comments
     "NPY",      # Some numpy-specific things
     "RUF",      # Ruff
+]
+lint.ignore = [
+    "D203",
+    "D213",
+    "COM812",
+    "TRY003",
+    "EM101",
+    "E402",
+    "ERA001",
+    "FBT001",
+    "FBT002",
+    "TD002",
+    "TD003",
+    "FIX002",
+    "PLC0415",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+    "S101",
+    "ANN",
+    "D100",
+    "PLR2004",
+    "SLF001",
+    "FBT001",
+    "PLR0913"
 ]
 
 [tool.mypy]
