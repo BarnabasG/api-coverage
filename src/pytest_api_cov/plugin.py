@@ -189,14 +189,15 @@ def wrap_client_with_coverage(client: Any, recorder: Any, test_name: str) -> Any
 
                 def tracked_method(*args: Any, **kwargs: Any) -> Any:
                     response = attr(*args, **kwargs)
-                    # Extract path from args[0]
+                    # Extract path from args[0] and method from function name
                     if args and recorder is not None:
                         path = args[0]
                         # Clean up the path to match endpoint format
                         if isinstance(path, str):
                             # Remove query parameters
                             path = path.partition("?")[0]
-                            recorder.record_call(path, test_name)
+                            method = name.upper()  # get -> GET, post -> POST, etc.
+                            recorder.record_call(path, test_name, method)
                     return response
 
                 return tracked_method
@@ -250,8 +251,10 @@ def coverage_client(request: pytest.FixtureRequest) -> Any:
                     if not coverage_data.discovered_endpoints.endpoints:
                         endpoints = adapter.get_endpoints()
                         framework_name = type(app).__name__
-                        for endpoint in endpoints:
-                            coverage_data.add_discovered_endpoint(endpoint, f"{framework_name.lower()}_adapter")
+                        for endpoint_method in endpoints:
+                            # endpoint_method is now in "METHOD /path" format
+                            method, path = endpoint_method.split(" ", 1)
+                            coverage_data.add_discovered_endpoint(path, method, f"{framework_name.lower()}_adapter")
                         logger.info(f"> pytest-api-coverage: Discovered {len(endpoints)} endpoints.")
                         logger.debug(f"> Discovered endpoints: {endpoints}")
                 except Exception as e:
@@ -285,8 +288,10 @@ def coverage_client(request: pytest.FixtureRequest) -> Any:
         try:
             endpoints = adapter.get_endpoints()
             framework_name = type(app).__name__
-            for endpoint in endpoints:
-                coverage_data.add_discovered_endpoint(endpoint, f"{framework_name.lower()}_adapter")
+            for endpoint_method in endpoints:
+                # endpoint_method is now in "METHOD /path" format
+                method, path = endpoint_method.split(" ", 1)
+                coverage_data.add_discovered_endpoint(path, method, f"{framework_name.lower()}_adapter")
             logger.info(f"> pytest-api-coverage: Discovered {len(endpoints)} endpoints.")
             logger.debug(f"> Discovered endpoints: {endpoints}")
         except Exception as e:

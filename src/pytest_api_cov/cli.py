@@ -117,6 +117,9 @@ show_excluded_endpoints = false
 
 # Wrap an existing custom test client fixture with coverage tracking (optional)
 # client_fixture_name = "my_custom_client"
+
+# Group HTTP methods by endpoint for legacy behavior (optional)
+# group_methods_by_endpoint = false
 """
 
 

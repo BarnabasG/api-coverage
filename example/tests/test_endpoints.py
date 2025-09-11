@@ -15,6 +15,13 @@ def test_items_path(coverage_client):
     assert response.json() == {"item_id": 42}
 
 
+def test_create_item(coverage_client):
+    """Test creating an item."""
+    response = coverage_client.post("/items", json={"name": "test item"})
+    assert response.status_code == 200
+    assert response.json()["message"] == "Item created"
+
+
 def test_xyz_and_root_path(coverage_client):
     """Test the xyz endpoint."""
     response = coverage_client.get("/xyz/123")

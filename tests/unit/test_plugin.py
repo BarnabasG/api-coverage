@@ -164,11 +164,11 @@ class TestPluginHooks:
 
         coverage_data = SessionData()
         coverage_data.recorder.record_call("/test", "test_func")
-        coverage_data.discovered_endpoints.endpoints = ["/test"]
+        coverage_data.discovered_endpoints.endpoints = ["GET /test"]
         mock_session.api_coverage_data = coverage_data
         mock_session.exitstatus = 0
 
-        workeroutput = {"api_call_recorder": {"/worker_test": ["worker_test"]}}
+        workeroutput = {"api_call_recorder": {"GET /worker_test": ["worker_test"]}}
         mock_session.config.workeroutput = workeroutput
 
         mock_config = Mock()
@@ -177,8 +177,8 @@ class TestPluginHooks:
 
         pytest_sessionfinish(mock_session)
 
-        assert workeroutput["api_call_recorder"] == {"/test": ["test_func"]}
-        assert workeroutput["discovered_endpoints"] == ["/test"]
+        assert workeroutput["api_call_recorder"] == {"GET /test": ["test_func"]}
+        assert workeroutput["discovered_endpoints"] == ["GET /test"]
 
     @patch("pytest_api_cov.plugin.get_pytest_api_cov_report_config")
     @patch("pytest_api_cov.plugin.generate_pytest_api_cov_report")
@@ -189,13 +189,13 @@ class TestPluginHooks:
 
         coverage_data = SessionData()
         coverage_data.recorder.record_call("/test", "test_func")
-        coverage_data.discovered_endpoints.endpoints = ["/test"]
+        coverage_data.discovered_endpoints.endpoints = ["GET /test"]
         mock_session.api_coverage_data = coverage_data
         mock_session.exitstatus = 0
 
         worker_data = {"/worker_test": ["worker_test"]}
         mock_session.config.worker_api_call_recorder = worker_data
-        mock_session.config.worker_discovered_endpoints = ["/worker_test"]
+        mock_session.config.worker_discovered_endpoints = ["GET /worker_test"]
 
         del mock_session.config.workeroutput
 
@@ -208,7 +208,7 @@ class TestPluginHooks:
         mock_generate_report.assert_called_once()
         call_args = mock_generate_report.call_args
         called_data = call_args[1]["called_data"]
-        assert "/test" in called_data
+        assert "GET /test" in called_data
         assert "/worker_test" in called_data
 
     @patch("pytest_api_cov.plugin.get_pytest_api_cov_report_config")

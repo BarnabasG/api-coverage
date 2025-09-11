@@ -8,8 +8,9 @@ from pytest_api_cov.frameworks import FastAPIAdapter, FlaskAdapter, get_framewor
 
 
 class MockFlaskRule:
-    def __init__(self, rule):
+    def __init__(self, rule, methods=None):
         self.rule = rule
+        self.methods = methods or {"GET", "POST", "HEAD", "OPTIONS"}
 
 
 class MockFlaskURLMap:
@@ -18,8 +19,9 @@ class MockFlaskURLMap:
 
 
 class MockFastAPIRoute:
-    def __init__(self, path):
+    def __init__(self, path, methods=None):
         self.path = path
+        self.methods = methods or {"GET", "POST"}
 
 
 class TestFlaskAdapter:
@@ -36,7 +38,8 @@ class TestFlaskAdapter:
     def test_flask_get_endpoints(self):
         """Verify endpoint discovery for Flask."""
         endpoints = self.adapter.get_endpoints()
-        assert endpoints == ["/", "/users/<id>"]
+        expected = ["GET /", "GET /users/<id>", "POST /", "POST /users/<id>"]
+        assert sorted(endpoints) == sorted(expected)
 
     def test_flask_get_tracked_client_no_recorder(self):
         """Test that get_tracked_client returns normal client when recorder is None."""
@@ -104,7 +107,8 @@ class TestFastAPIAdapter:
         """Verify endpoint discovery for FastAPI."""
         with patch("fastapi.routing.APIRoute", MockFastAPIRoute):
             endpoints = self.adapter.get_endpoints()
-            assert endpoints == ["/", "/items/{item_id}"]
+            expected = ["GET /", "GET /items/{item_id}", "POST /", "POST /items/{item_id}"]
+            assert sorted(endpoints) == sorted(expected)
 
     def test_fastapi_get_tracked_client_no_recorder(self):
         """Test that get_tracked_client returns normal client when recorder is None."""

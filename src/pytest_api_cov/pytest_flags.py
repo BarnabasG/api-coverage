@@ -74,3 +74,9 @@ def add_pytest_api_cov_flags(parser: pytest.Parser) -> None:
         default=None,
         help="Name of existing test client fixture to wrap with coverage tracking",
     )
+    parser.addoption(
+        "--api-cov-group-methods-by-endpoint",
+        action="store_true",
+        default=False,
+        help="Group HTTP methods by endpoint for legacy behavior (default: method-aware coverage)",
+    )

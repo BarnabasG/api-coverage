@@ -65,6 +65,10 @@ def read_root():
 def get_user(user_id: int):
     return {"user_id": user_id}
 
+@app.post("/users")
+def create_user(user: dict):
+    return {"message": "User created", "user": user}
+
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
@@ -80,6 +84,10 @@ def test_root_endpoint(coverage_client):
 def test_get_user(coverage_client):
     response = coverage_client.get("/users/123")
     assert response.status_code == 200
+
+def test_create_user(coverage_client):
+    response = coverage_client.post("/users", json={"name": "John"})
+    assert response.status_code == 200
 ```
 
 Running `pytest --api-cov-report` produces:
@@ -87,25 +95,67 @@ Running `pytest --api-cov-report` produces:
 ```
 API Coverage Report
 Uncovered Endpoints:
-  [X] /health
+  ❌ GET    /health
 
 Total API Coverage: 66.67%
 ```
 
-Or running with advanced options `pytest --api-cov-report --api-cov-show-covered-endpoints --api-cov-exclusion-patterns="/users/*" --api-cov-show-excluded-endpoints --api-cov-report-path=api_coverage.json --api-cov-fail-under=49` produces:
+Or running with advanced options:
+```bash
+pytest --api-cov-report --api-cov-show-covered-endpoints --api-cov-exclusion-patterns="/users*" --api-cov-show-excluded-endpoints --api-cov-report-path=api_coverage.json
+```
 
 ```
 API Coverage Report
 Uncovered Endpoints:
-  [X] /health
+  ❌ GET    /health
 Covered Endpoints:
-  [.] /
+  ✅ GET    /
 Excluded Endpoints:
-  [-] /users/{user_id}
+  🚫 GET    /users/{user_id}
+  🚫 POST   /users
 
-SUCCESS: Coverage of 50.0% meets requirement of 49.0%
+Total API Coverage: 50.0%
 
 JSON report saved to api_coverage.json
+```
+
+## HTTP Method-Aware Coverage
+
+By default, pytest-api-cov tracks coverage for **each HTTP method separately**. This means `GET /users` and `POST /users` are treated as different endpoints for coverage purposes.
+
+### Method-Aware (Default Behavior)
+```
+Covered Endpoints:
+  ✅ GET    /users/{id}
+  ✅ POST   /users
+Uncovered Endpoints:
+  ❌ PUT    /users/{id}
+  ❌ DELETE /users/{id}
+
+Total API Coverage: 50.0%  # 2 out of 4 method-endpoint combinations
+```
+
+### Endpoint Grouping
+To group all methods on an endpoint are together, use:
+
+```bash
+pytest --api-cov-report --api-cov-group-methods-by-endpoint
+```
+
+Or in `pyproject.toml`:
+```toml
+[tool.pytest_api_cov]
+group_methods_by_endpoint = true
+```
+
+This would show:
+```
+Covered Endpoints:
+  ✅ /users/{id}  # Any method tested
+  ✅ /users       # Any method tested
+
+Total API Coverage: 100.0%  # All endpoints have at least one method tested
 ```
 
 ## Advanced Configuration
@@ -212,6 +262,11 @@ force_sugar_disabled = true
 
 # Wrap an existing custom test client fixture with coverage tracking
 client_fixture_name = "my_custom_client"
+
+# Group HTTP methods by endpoint for legacy behavior (default: false)
+# When true: treats GET /users and POST /users as one "/users" endpoint  
+# When false: treats them as separate "GET /users" and "POST /users" endpoints (recommended)
+group_methods_by_endpoint = false
 ```
 
 ### Command Line Options
@@ -243,6 +298,9 @@ pytest --api-cov-report -v
 
 # Debug logging (very detailed)
 pytest --api-cov-report -vv
+
+# Group HTTP methods by endpoint (legacy behavior)
+pytest --api-cov-report --api-cov-group-methods-by-endpoint
 ```
 
 ## Framework Support

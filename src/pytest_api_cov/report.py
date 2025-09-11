@@ -44,7 +44,19 @@ def categorise_endpoints(
     )
 
     for endpoint in endpoints:
-        if compiled_patterns and any(p.match(endpoint) for p in compiled_patterns):
+        # Check exclusion patterns against both full "METHOD /path" and just "/path"
+        is_excluded = False
+        if compiled_patterns:
+            # Extract path from "METHOD /path" format for pattern matching
+            if " " in endpoint:
+                _, path_only = endpoint.split(" ", 1)
+                is_excluded = any(p.match(endpoint) for p in compiled_patterns) or any(
+                    p.match(path_only) for p in compiled_patterns
+                )
+            else:
+                is_excluded = any(p.match(endpoint) for p in compiled_patterns)
+
+        if is_excluded:
             excluded.append(endpoint)
             continue
         elif contains_escape_characters(endpoint):
@@ -67,7 +79,15 @@ def print_endpoints(
     if endpoints:
         console.print(f"[{style}]{label}[/]:")
         for endpoint in endpoints:
-            console.print(f"  {symbol} [{style}]{endpoint}[/]")
+            # Format endpoint with consistent spacing for HTTP methods
+            if " " in endpoint:
+                method, path = endpoint.split(" ", 1)
+                # Pad method to 6 characters (longest common method is DELETE)
+                formatted_endpoint = f"{method:<6} {path}"
+            else:
+                # Handle legacy format without method
+                formatted_endpoint = endpoint
+            console.print(f"  {symbol} [{style}]{formatted_endpoint}[/]")
 
 
 def compute_coverage(covered_count: int, uncovered_count: int) -> float:

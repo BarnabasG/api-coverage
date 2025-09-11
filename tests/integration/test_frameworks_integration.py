@@ -31,9 +31,9 @@ class TestFlaskIntegration:
             adapter = FlaskAdapter(app)
 
             endpoints = adapter.get_endpoints()
-            assert "/" in endpoints
-            assert "/users/<user_id>" in endpoints
-            assert "/items" in endpoints
+            assert "GET /" in endpoints
+            assert "GET /users/<user_id>" in endpoints
+            assert "GET /items" in endpoints
 
             recorder = ApiCallRecorder()
             client = adapter.get_tracked_client(recorder, "test_flask_tracking")
@@ -47,9 +47,9 @@ class TestFlaskIntegration:
             response = client.open("/items")
             assert response.status_code == 200
 
-            assert "/" in recorder
-            assert "/users/<user_id>" in recorder
-            assert "/items" in recorder
+            assert "GET /" in recorder
+            assert "GET /users/<user_id>" in recorder
+            assert "GET /items" in recorder
             assert "test_flask_tracking" in recorder.get_callers("/")
             assert "test_flask_tracking" in recorder.get_callers("/users/<user_id>")
             assert "test_flask_tracking" in recorder.get_callers("/items")
