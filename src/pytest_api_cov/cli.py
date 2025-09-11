@@ -3,10 +3,10 @@
 import argparse
 import os
 import sys
-from typing import Optional
+from typing import Optional, Tuple
 
 
-def detect_framework_and_app() -> Optional[tuple[str, str, str]]:
+def detect_framework_and_app() -> Optional[Tuple[str, str, str]]:
     """
     Detect framework and app location.
     Returns (framework, file_path, app_variable) or None.
