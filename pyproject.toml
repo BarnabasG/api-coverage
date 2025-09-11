@@ -45,7 +45,6 @@ pythonpath = ["src"]
 exclude_lines = ['if __name__ == "__main__":', "if TYPE_CHECKING:"]
 show_missing = true
 
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -75,6 +74,25 @@ fix = true
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"] # Standard flake8 and isort rules
+extend-select = [
+    "E", "W",   # Pydocstyle
+    "D",        # Pydocstyle
+    "F",        # Pyflakes rules
+    "I",        # Sort imports properly
+    "UP",       # Warn if certain things can changed due to newer Python versions
+    "C4",       # Catch incorrect use of comprehensions, dict, list, etc
+    "FA",       # Enforce from __future__ import annotations
+    "ISC",      # Good use of string concatenation
+    "ICN",      # Use common import conventions
+    "RET",      # Good return practices
+    "SIM",      # Common simplification rules
+    "TID",      # Some good import practices
+    "TC",       # Enforce importing certain types in a TYPE_CHECKING block
+    "PTH",      # Use pathlib instead of os.path
+    "TD",       # Be diligent with TODO comments
+    "NPY",      # Some numpy-specific things
+    "RUF",      # Ruff
+]
 
 [tool.mypy]
 files = ["src"]

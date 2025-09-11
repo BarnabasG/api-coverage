@@ -9,7 +9,6 @@ from typing import Any, Optional
 import pytest
 
 from .config import get_pytest_api_cov_report_config
-from .frameworks import get_framework_adapter
 from .models import SessionData
 from .pytest_flags import add_pytest_api_cov_flags
 from .report import generate_pytest_api_cov_report
@@ -59,12 +58,10 @@ def auto_discover_app() -> Optional[Any]:
                             app = getattr(module, attr_name)
                             if is_supported_framework(app):
                                 found_apps.append((filename, attr_name, type(app).__name__))
-                                # Return the first valid app found, but log what we're doing
                                 if len(found_apps) == 1:
                                     logger.info(
                                         f"✅ Auto-discovered {type(app).__name__} app in {filename} as '{attr_name}'"
                                     )
-                                    # Check if there are more files to scan
                                     remaining_files = [
                                         f
                                         for f in [
@@ -88,7 +85,6 @@ def auto_discover_app() -> Optional[Any]:
                 logger.debug(f"> Could not import {filename}: {e}")
                 continue
 
-    # If we get here, no apps were found
     if found_files:
         logger.debug(f"> Found files {found_files} but no supported Flask/FastAPI apps in them")
         logger.debug("> If your app is in one of these files with a different variable name,")
@@ -176,6 +172,84 @@ def pytest_sessionstart(session: pytest.Session) -> None:
         session.api_coverage_data = SessionData()  # type: ignore[attr-defined]
 
 
+def create_coverage_fixture(fixture_name: str, existing_fixture_name: Optional[str] = None) -> Any:
+    """
+    Helper function to create a coverage-enabled fixture with a custom name.
+
+    Args:
+        fixture_name: The name for the new fixture
+        existing_fixture_name: Optional name of existing fixture to wrap
+
+    Returns:
+        A pytest fixture function that can be used in conftest.py
+
+    Example usage in conftest.py:
+        import pytest
+        from pytest_api_cov.plugin import create_coverage_fixture
+
+        # Create a new fixture
+        my_client = create_coverage_fixture('my_client')
+
+        # Wrap an existing fixture
+        flask_client = create_coverage_fixture('flask_client', 'original_flask_client')
+    """
+
+    def fixture_func(request: pytest.FixtureRequest) -> Any:
+        """Coverage-enabled client fixture."""
+        session = request.node.session
+
+        if not session.config.getoption("--api-cov-report"):
+            pytest.skip("API coverage not enabled. Use --api-cov-report flag.")
+
+        coverage_data = getattr(session, "api_coverage_data", None)
+        if coverage_data is None:
+            pytest.skip("API coverage data not initialized. This should not happen.")
+
+        existing_client = None
+        if existing_fixture_name:
+            try:
+                existing_client = request.getfixturevalue(existing_fixture_name)
+                logger.debug(f"> Found existing '{existing_fixture_name}' fixture, wrapping with coverage")
+            except pytest.FixtureLookupError:
+                raise RuntimeError(f"Existing fixture '{existing_fixture_name}' not found")
+
+        app = get_app_from_fixture_or_auto_discover(request)
+        if app and is_supported_framework(app):
+            try:
+                from .frameworks import get_framework_adapter
+
+                adapter = get_framework_adapter(app)
+                if not coverage_data.discovered_endpoints.endpoints:
+                    endpoints = adapter.get_endpoints()
+                    framework_name = type(app).__name__
+                    for endpoint_method in endpoints:
+                        method, path = endpoint_method.split(" ", 1)
+                        coverage_data.add_discovered_endpoint(path, method, f"{framework_name.lower()}_adapter")
+                    logger.info(f"> pytest-api-coverage: Discovered {len(endpoints)} endpoints.")
+                    logger.debug(f"> Discovered endpoints: {endpoints}")
+            except Exception as e:
+                logger.warning(f"> pytest-api-coverage: Could not discover endpoints from app. Error: {e}")
+
+        if existing_client:
+            client = existing_client
+        else:
+            if app and is_supported_framework(app):
+                from .frameworks import get_framework_adapter
+
+                adapter = get_framework_adapter(app)
+                client = adapter.get_tracked_client(coverage_data.recorder, request.node.name)
+                yield client
+                return
+            else:
+                pytest.skip("No existing fixture specified and no valid app for creating new client")
+
+        wrapped_client = wrap_client_with_coverage(client, coverage_data.recorder, request.node.name)
+        yield wrapped_client
+
+    fixture_func.__name__ = fixture_name
+    return pytest.fixture(fixture_func)
+
+
 def wrap_client_with_coverage(client: Any, recorder: Any, test_name: str) -> Any:
     """Wrap an existing test client with coverage tracking."""
 
@@ -196,7 +270,7 @@ def wrap_client_with_coverage(client: Any, recorder: Any, test_name: str) -> Any
                         if isinstance(path, str):
                             # Remove query parameters
                             path = path.partition("?")[0]
-                            method = name.upper()  # get -> GET, post -> POST, etc.
+                            method = name.upper()
                             recorder.record_call(path, test_name, method)
                     return response
 
@@ -236,23 +310,21 @@ def coverage_client(request: pytest.FixtureRequest) -> Any:
     if coverage_data is None:
         pytest.skip("API coverage data not initialized. This should not happen.")
 
-    # Check if we should wrap an existing fixture
     if config.client_fixture_name != "coverage_client":
         try:
-            # Get the existing custom fixture
             existing_client = request.getfixturevalue(config.client_fixture_name)
             logger.info(f"> Found custom fixture '{config.client_fixture_name}', wrapping with coverage tracking")
 
-            # We still need to discover endpoints, so try to get the app
             app = get_app_from_fixture_or_auto_discover(request)
             if app and is_supported_framework(app):
                 try:
+                    from .frameworks import get_framework_adapter
+
                     adapter = get_framework_adapter(app)
                     if not coverage_data.discovered_endpoints.endpoints:
                         endpoints = adapter.get_endpoints()
                         framework_name = type(app).__name__
                         for endpoint_method in endpoints:
-                            # endpoint_method is now in "METHOD /path" format
                             method, path = endpoint_method.split(" ", 1)
                             coverage_data.add_discovered_endpoint(path, method, f"{framework_name.lower()}_adapter")
                         logger.info(f"> pytest-api-coverage: Discovered {len(endpoints)} endpoints.")
@@ -260,7 +332,6 @@ def coverage_client(request: pytest.FixtureRequest) -> Any:
                 except Exception as e:
                     logger.warning(f"> pytest-api-coverage: Could not discover endpoints from app. Error: {e}")
 
-            # Wrap the existing client with coverage tracking
             wrapped_client = wrap_client_with_coverage(existing_client, coverage_data.recorder, request.node.name)
             yield wrapped_client
             return
@@ -268,7 +339,6 @@ def coverage_client(request: pytest.FixtureRequest) -> Any:
         except pytest.FixtureLookupError:
             logger.warning(f"> Custom fixture '{config.client_fixture_name}' not found, falling back to auto-discovery")
 
-    # Original auto-discovery logic
     app = get_app_from_fixture_or_auto_discover(request)
 
     if app is None:
@@ -280,6 +350,8 @@ def coverage_client(request: pytest.FixtureRequest) -> Any:
         pytest.skip(f"Unsupported framework: {type(app).__name__}. pytest-api-coverage supports Flask and FastAPI.")
 
     try:
+        from .frameworks import get_framework_adapter
+
         adapter = get_framework_adapter(app)
     except TypeError as e:
         pytest.skip(f"Framework detection failed: {e}")
@@ -289,7 +361,6 @@ def coverage_client(request: pytest.FixtureRequest) -> Any:
             endpoints = adapter.get_endpoints()
             framework_name = type(app).__name__
             for endpoint_method in endpoints:
-                # endpoint_method is now in "METHOD /path" format
                 method, path = endpoint_method.split(" ", 1)
                 coverage_data.add_discovered_endpoint(path, method, f"{framework_name.lower()}_adapter")
             logger.info(f"> pytest-api-coverage: Discovered {len(endpoints)} endpoints.")

@@ -194,7 +194,41 @@ This approach works with any project structure - the plugin doesn't care where y
 
 ### Custom Test Client Fixtures
 
-If you have an existing test client fixture with custom setup (authentication, headers, etc.), you can wrap it with coverage tracking:
+You have several options for using custom client fixtures:
+
+#### Option 1: Helper Function
+
+Use the `create_coverage_fixture` helper to create a custom fixture name:
+
+```python
+# conftest.py
+import pytest
+from pytest_api_cov.plugin import create_coverage_fixture
+
+# Create a new fixture with custom name
+my_client = create_coverage_fixture('my_client')
+
+# Or wrap an existing fixture
+@pytest.fixture
+def original_flask_client():
+    from flask.testing import FlaskClient
+    from your_app import app
+    return app.test_client()
+
+flask_client = create_coverage_fixture('flask_client', 'original_flask_client')
+
+def test_endpoint(my_client):
+    response = my_client.get("/endpoint")
+    assert response.status_code == 200
+
+def test_with_flask_client(flask_client):
+    response = flask_client.get("/endpoint")
+    assert response.status_code == 200
+```
+
+#### Option 2: Configuration-Based
+
+Configure an existing fixture to be wrapped automatically:
 
 ```python
 import pytest
@@ -209,7 +243,6 @@ def my_custom_client():
     return client
 
 def test_endpoint(coverage_client):
-    # coverage_client will be your custom client with coverage tracking
     response = coverage_client.get("/protected-endpoint")
     assert response.status_code == 200
 ```
@@ -219,12 +252,6 @@ Configure it in `pyproject.toml`:
 ```toml
 [tool.pytest_api_cov]
 client_fixture_name = "my_custom_client"
-```
-
-Or via command line:
-
-```bash
-pytest --api-cov-report --api-cov-client-fixture-name=my_custom_client
 ```
 
 ### Configuration Options
