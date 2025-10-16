@@ -20,6 +20,10 @@ test:
 	@echo "Running plugin tests..."
 	@uv run python -u -m pytest tests/
 
+typeguard:
+	@echo "Running typeguard..."
+	@uv run python -u -m pytest tests/ --typeguard-packages=tests/
+
 test-example:
 	@echo "Running example tests with API coverage..."
 	@uv run python -u -m pytest example/tests/ --api-cov-report --api-cov-fail-under=50
@@ -49,7 +53,9 @@ build:
 	@uv sync
 	@uv build
 
-publish:
+pipeline: format clean test cover typeguard test-example test-example-parallel
+
+publish: pipeline build
 	@echo "Publishing plugin..."
 	@uv publish --token $(PYPI_TOKEN)
 

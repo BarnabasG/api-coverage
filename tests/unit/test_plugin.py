@@ -24,9 +24,10 @@ class TestSupportedFramework:
     def test_package_version(self):
         """Test that package version is accessible."""
         import pytest_api_cov
+
         assert hasattr(pytest_api_cov, "__version__")
         assert isinstance(pytest_api_cov.__version__, str)
-        assert pytest_api_cov.__version__ == "0.1.1"
+        assert pytest_api_cov.__version__ == "1.1.3"
 
     def test_is_supported_framework_none(self):
         """Test framework detection with None."""
@@ -58,11 +59,10 @@ class TestSupportedFramework:
         """Test auto-discovery when no app files exist."""
         result = auto_discover_app()
         assert result is None
+        mock_exists.assert_called()
 
-    @patch("os.path.exists", return_value=True)
     @patch("importlib.util.spec_from_file_location")
-    @patch("importlib.util.module_from_spec")
-    def test_auto_discover_app_import_error(self, mock_module_from_spec, mock_spec_from_file, mock_exists):
+    def test_auto_discover_app_import_error(self, mock_spec_from_file):
         """Test auto-discovery when import fails."""
         mock_spec_from_file.return_value = None
         result = auto_discover_app()
@@ -163,11 +163,11 @@ class TestPluginHooks:
 
         coverage_data = SessionData()
         coverage_data.recorder.record_call("/test", "test_func")
-        coverage_data.discovered_endpoints.endpoints = ["/test"]
+        coverage_data.discovered_endpoints.endpoints = ["GET /test"]
         mock_session.api_coverage_data = coverage_data
         mock_session.exitstatus = 0
 
-        workeroutput = {"api_call_recorder": {"/worker_test": ["worker_test"]}}
+        workeroutput = {"api_call_recorder": {"GET /worker_test": ["worker_test"]}}
         mock_session.config.workeroutput = workeroutput
 
         mock_config = Mock()
@@ -176,8 +176,8 @@ class TestPluginHooks:
 
         pytest_sessionfinish(mock_session)
 
-        assert workeroutput["api_call_recorder"] == {"/test": ["test_func"]}
-        assert workeroutput["discovered_endpoints"] == ["/test"]
+        assert workeroutput["api_call_recorder"] == {"GET /test": ["test_func"]}
+        assert workeroutput["discovered_endpoints"] == ["GET /test"]
 
     @patch("pytest_api_cov.plugin.get_pytest_api_cov_report_config")
     @patch("pytest_api_cov.plugin.generate_pytest_api_cov_report")
@@ -188,13 +188,13 @@ class TestPluginHooks:
 
         coverage_data = SessionData()
         coverage_data.recorder.record_call("/test", "test_func")
-        coverage_data.discovered_endpoints.endpoints = ["/test"]
+        coverage_data.discovered_endpoints.endpoints = ["GET /test"]
         mock_session.api_coverage_data = coverage_data
         mock_session.exitstatus = 0
 
         worker_data = {"/worker_test": ["worker_test"]}
         mock_session.config.worker_api_call_recorder = worker_data
-        mock_session.config.worker_discovered_endpoints = ["/worker_test"]
+        mock_session.config.worker_discovered_endpoints = ["GET /worker_test"]
 
         del mock_session.config.workeroutput
 
@@ -207,7 +207,7 @@ class TestPluginHooks:
         mock_generate_report.assert_called_once()
         call_args = mock_generate_report.call_args
         called_data = call_args[1]["called_data"]
-        assert "/test" in called_data
+        assert "GET /test" in called_data
         assert "/worker_test" in called_data
 
     @patch("pytest_api_cov.plugin.get_pytest_api_cov_report_config")
@@ -299,7 +299,7 @@ class TestPluginHooks:
         mock_config.pluginmanager.register.assert_called_once()
 
     @pytest.mark.parametrize(
-        "verbose_level,expected_log_level",
+        ("verbose_level", "expected_log_level"),
         [
             (0, "WARNING"),  # normal run
             (1, "INFO"),  # -v

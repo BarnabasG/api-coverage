@@ -16,6 +16,16 @@ def read_item(item_id: int):
     return {"item_id": item_id}
 
 
+@app.post("/items")
+def create_item(item: dict):
+    return {"message": "Item created", "item": item}
+
+
+@app.put("/items/{item_id}")
+def update_item(item_id: int, item: dict):
+    return {"message": "Item updated", "item_id": item_id, "item": item}
+
+
 @app.get("/health")
 def health_check():
     return {"status": "ok"}

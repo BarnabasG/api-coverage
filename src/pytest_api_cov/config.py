@@ -20,6 +20,8 @@ class ApiCoverageReportConfig(BaseModel):
     report_path: Optional[str] = Field(None, alias="api-cov-report-path")
     force_sugar: bool = Field(False, alias="api-cov-force-sugar")
     force_sugar_disabled: bool = Field(False, alias="api-cov-force-sugar-disabled")
+    client_fixture_name: str = Field("coverage_client", alias="api-cov-client-fixture-name")
+    group_methods_by_endpoint: bool = Field(False, alias="api-cov-group-methods-by-endpoint")
 
 
 def read_toml_config() -> Dict[str, Any]:
@@ -43,6 +45,8 @@ def read_session_config(session_config: Any) -> Dict[str, Any]:
         "api-cov-report-path": "report_path",
         "api-cov-force-sugar": "force_sugar",
         "api-cov-force-sugar-disabled": "force_sugar_disabled",
+        "api-cov-client-fixture-name": "client_fixture_name",
+        "api-cov-group-methods-by-endpoint": "group_methods_by_endpoint",
     }
     config = {}
     for opt, key in cli_options.items():
@@ -60,8 +64,7 @@ def supports_unicode() -> bool:
 
 
 def get_pytest_api_cov_report_config(session_config: Any) -> ApiCoverageReportConfig:
-    """
-    Get the final API coverage configuration by merging sources.
+    """Get the final API coverage configuration by merging sources.
     Priority: CLI > pyproject.toml > Defaults
     """
     toml_config = read_toml_config()

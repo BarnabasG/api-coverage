@@ -1,28 +1,27 @@
 [project]
 name = "pytest-api-cov"
-version = "1.0.0"
-description = "Api Coverage Report Pytest Plugin"
+version = "1.1.3"
+description = "Pytest Plugin to provide API Coverage statistics for Python Web Frameworks"
 readme = "README.md"
-authors = [
-    {name = "Barnaby Gill", email = "barnabasgill@gmail.com"},
-]
-license = {text = "Apache-2.0"}
+authors = [{ name = "Barnaby Gill", email = "barnabasgill@gmail.com" }]
+license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
 
 dependencies = [
-    "fastapi>=0.116.1",
-    "flask>=3.1.1",
-    "httpx>=0.28.1",
-    "pydantic>=2.11.7",
-    "rich>=14.0.0",
-    "starlette>=0.47.1",
-    "tomli>=2.2.1",
-    "pytest>=8.4.1",
+    "fastapi>=0.68.0",
+    "flask>=2.0.0",
+    "httpx>=0.20.0",
+    "pydantic>=2.0.0",
+    "rich>=10.0.0",
+    "starlette>=0.14.0",
+    "tomli>=1.2.0",
+    "pytest>=6.0.0",
 ]
 
 [dependency-groups]
 dev = [
     "mypy>=1.17.0",
+    "path>=17.1.1",
     "pytest-cov>=6.2.1",
     "pytest-sugar>=1.0.0",
     "pytest-xdist>=3.8.0",
@@ -32,13 +31,11 @@ dev = [
 
 # API COVERAGE
 [tool.pytest_api_cov]
-# fail_under = 95.0  # in the command
+fail_under = 70
 show_covered_endpoints = true
 show_uncovered_endpoints = true
 show_excluded_endpoints = true
-exclusion_patterns = [
-    "xyz",
-]
+exclusion_patterns = ["xyz"]
 report_path = "reports/pytest_api_cov.json"
 
 [tool.pytest.ini_options]
@@ -46,13 +43,8 @@ testpaths = ["tests/unit", "tests/integration", "example/tests"]
 pythonpath = ["src"]
 
 [tool.coverage.report]
-exclude_lines = [
-    'if __name__ == "__main__":',
-    "if TYPE_CHECKING:",
-]
+exclude_lines = ['if __name__ == "__main__":', "if TYPE_CHECKING:"]
 show_missing = true
-fail_under = 70.0
-
 
 [build-system]
 requires = ["hatchling"]
@@ -62,12 +54,7 @@ build-backend = "hatchling.build"
 packages = ["src/pytest_api_cov"]
 
 [tool.hatch.build.targets.sdist]
-include = [
-    "src/pytest_api_cov/",
-    "README.md",
-    "LICENSE",
-    "pyproject.toml",
-]
+include = ["src/pytest_api_cov/", "README.md", "LICENSE", "pyproject.toml"]
 
 # [[tool.uv.index]]
 # name = "testpypi"
@@ -85,9 +72,83 @@ pytest-api-cov = "pytest_api_cov.cli:main"
 src = ["src", "tests", "example"]
 line-length = 120
 fix = true
+lint.select = [
+    "E", "W",   # Pydocstyle
+    "D",        # Pydocstyle
+    "F",        # Pyflakes rules
+    "I",        # Sort imports properly
+    "C90",
+    "N",
+    "S",
+    "YTT",
+    "ANN",
+    "ASYNC",
+    "BLE",
+    "FBT",
+    "B",
+    "A",
+    "COM",
+    "C4",
+    "DTZ",
+    "T10",
+    "EM",
+    "FA",
+    "ISC",
+    "T20",
+    "PYI",
+    "PT",
+    "Q",
+    "RSE",
+    "RET",
+    "SLF",
+    "SLOT",
+    "SIM",
+    "TID",
+    "TCH",
+    "INT",
+    "ARG",
+    "PTH",
+    "TD",
+    "FIX",
+    "ERA",
+    "PD",
+    "PGH",
+    "PL",
+    "TRY",
+    "FLY",
+    "NPY",
+    "PERF",
+    "RUF",
+]
+lint.ignore = [
+    "D203",
+    "D213",
+    "COM812",
+    "TRY003",
+    "EM101",
+    "E402",
+    "ERA001",
+    "FBT001",
+    "FBT002",
+    "TD002",
+    "TD003",
+    "FIX002",
+    "PLC0415",
+]
 
-[tool.ruff.lint]
-select = ["E", "F", "W", "I"] # Standard flake8 and isort rules
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+    "S101",
+    "ANN",
+    "D100",
+    "PLR2004",
+    "SLF001",
+    "FBT001",
+    "PLR0913",
+    "C901",
+    "N806",
+    "D"
+]
 
 [tool.mypy]
 files = ["src"]

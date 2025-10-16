@@ -12,19 +12,26 @@ class ApiCallRecorder(BaseModel):
 
     calls: Dict[str, Set[str]] = Field(default_factory=dict)
 
-    def record_call(self, endpoint: str, test_name: str) -> None:
-        """Record that a test called an endpoint."""
-        if endpoint not in self.calls:
-            self.calls[endpoint] = set()
-        self.calls[endpoint].add(test_name)
+    def record_call(self, endpoint: str, test_name: str, method: str = "GET") -> None:
+        """Record that a test called a specific method on an endpoint."""
+        endpoint_method = self._format_endpoint_key(method, endpoint)
+        if endpoint_method not in self.calls:
+            self.calls[endpoint_method] = set()
+        self.calls[endpoint_method].add(test_name)
 
-    def get_called_endpoints(self) -> List[str]:
-        """Get list of all endpoints that have been called."""
-        return list(self.calls.keys())
+    @staticmethod
+    def _format_endpoint_key(method: str, endpoint: str) -> str:
+        """Format method and endpoint into a consistent key format."""
+        return f"{method.upper()} {endpoint}"
 
-    def get_callers(self, endpoint: str) -> Set[str]:
-        """Get the set of test names that called a specific endpoint."""
-        return self.calls.get(endpoint, set())
+    @staticmethod
+    def _parse_endpoint_key(endpoint_key: str) -> tuple[str, str]:
+        """Parse an endpoint key back into method and endpoint parts."""
+        if " " in endpoint_key:
+            method, endpoint = endpoint_key.split(" ", 1)
+            return method, endpoint
+        # Handle legacy format without method
+        return "GET", endpoint_key
 
     def merge(self, other: "ApiCallRecorder") -> None:
         """Merge another recorder's data into this one."""
@@ -70,15 +77,17 @@ class EndpointDiscovery(BaseModel):
     endpoints: List[str] = Field(default_factory=list)
     discovery_source: str = Field(default="unknown")
 
-    def add_endpoint(self, endpoint: str) -> None:
-        """Add a discovered endpoint."""
-        if endpoint not in self.endpoints:
-            self.endpoints.append(endpoint)
+    def add_endpoint(self, endpoint: str, method: str = "GET") -> None:
+        """Add a discovered endpoint method."""
+        endpoint_method = ApiCallRecorder._format_endpoint_key(method, endpoint)
+        if endpoint_method not in self.endpoints:
+            self.endpoints.append(endpoint_method)
 
     def merge(self, other: "EndpointDiscovery") -> None:
         """Merge another discovery's endpoints into this one."""
         for endpoint in other.endpoints:
-            self.add_endpoint(endpoint)
+            if endpoint not in self.endpoints:
+                self.endpoints.append(endpoint)
 
     def __len__(self) -> int:
         """Return number of discovered endpoints."""
@@ -95,15 +104,24 @@ class SessionData(BaseModel):
     recorder: ApiCallRecorder = Field(default_factory=ApiCallRecorder)
     discovered_endpoints: EndpointDiscovery = Field(default_factory=EndpointDiscovery)
 
-    def record_call(self, endpoint: str, test_name: str) -> None:
+    def record_call(self, endpoint: str, test_name: str, method: str = "GET") -> None:
         """Record an API call."""
-        self.recorder.record_call(endpoint, test_name)
+        self.recorder.record_call(endpoint, test_name, method)
 
-    def add_discovered_endpoint(self, endpoint: str, source: str = "unknown") -> None:
-        """Add a discovered endpoint."""
+    def add_discovered_endpoint(self, endpoint: str, method_or_source: str = "GET", source: str = "unknown") -> None:
+        """Add a discovered endpoint method."""
+        # Handle both old and new method signatures for backward compatibility
+        if method_or_source in ["flask_adapter", "fastapi_adapter", "worker", "unknown"]:
+            # Old signature: add_discovered_endpoint(endpoint, source)
+            method = "GET"
+            source = method_or_source
+        else:
+            # New signature: add_discovered_endpoint(endpoint, method, source)
+            method = method_or_source
+
         if not self.discovered_endpoints.endpoints:
             self.discovered_endpoints.discovery_source = source
-        self.discovered_endpoints.add_endpoint(endpoint)
+        self.discovered_endpoints.add_endpoint(endpoint, method)
 
     def merge_worker_data(self, worker_recorder: Dict[str, Any], worker_endpoints: List[str]) -> None:
         """Merge data from a worker process."""
