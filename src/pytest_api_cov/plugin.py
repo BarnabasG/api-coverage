@@ -25,7 +25,9 @@ def is_supported_framework(app: Any) -> bool:
     app_type = type(app).__name__
     module_name = getattr(type(app), "__module__", "").split(".")[0]
 
-    return (module_name == "flask" and app_type == "Flask") or (module_name == "fastapi" and app_type == "FastAPI")
+    return ((module_name == "flask" and app_type == "Flask") or
+            (module_name == "flask_openapi3" and app_type == "OpenAPI") or
+            (module_name == "fastapi" and app_type == "FastAPI"))
 
 
 def auto_discover_app() -> Optional[Any]:

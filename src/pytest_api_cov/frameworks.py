@@ -74,6 +74,8 @@ def get_framework_adapter(app: Any) -> BaseAdapter:
 
     if module_name == "flask" and app_type == "Flask":
         return FlaskAdapter(app)
+    elif module_name == "flask_openapi3" and app_type == "OpenAPI":
+        return FlaskAdapter(app)
     elif module_name == "fastapi" and app_type == "FastAPI":
         return FastAPIAdapter(app)
 
