@@ -30,24 +30,64 @@ def categorise_endpoints(
 ) -> Tuple[List[str], List[str], List[str]]:
     """Categorise endpoints into covered, uncovered, and excluded.
 
-    Exclusion patterns support simple wildcard matching:
+    Exclusion patterns support simple wildcard matching with negation:
     - Use * for wildcard (matches any characters)
+    - Use ! at the start to negate a pattern (include what would otherwise be excluded)
     - All other characters are matched literally
-    - Examples: "/admin/*", "/health", "/docs/*"
+    - Examples: "/admin/*", "/health", "!users/bob" (negates exclusion)
+    - Pattern order matters: exclusions are applied first, then negations override them
     """
     covered, uncovered, excluded = [], [], []
 
-    compiled_patterns = (
-        [re.compile("^" + re.escape(pattern).replace(r"\*", ".*") + "$") for pattern in exclusion_patterns]
-        if exclusion_patterns
-        else None
-    )
+    if not exclusion_patterns:
+        compiled_exclusions = None
+        compiled_negations = None
+    else:
+        # Separate exclusion and negation patterns
+        exclusion_only = [p for p in exclusion_patterns if not p.startswith("!")]
+        negation_only = [p[1:] for p in exclusion_patterns if p.startswith("!")]  # Remove the '!' prefix
+
+        compiled_exclusions = (
+            [re.compile("^" + re.escape(pattern).replace(r"\*", ".*") + "$") for pattern in exclusion_only]
+            if exclusion_only
+            else None
+        )
+        compiled_negations = (
+            [re.compile("^" + re.escape(pattern).replace(r"\*", ".*") + "$") for pattern in negation_only]
+            if negation_only
+            else None
+        )
 
     for endpoint in endpoints:
-        if compiled_patterns and any(p.match(endpoint) for p in compiled_patterns):
+        # Check exclusion patterns against both full "METHOD /path" and just "/path"
+        is_excluded = False
+        if compiled_exclusions:
+            # Extract path from "METHOD /path" format for pattern matching
+            if " " in endpoint:
+                _, path_only = endpoint.split(" ", 1)
+                is_excluded = any(p.match(endpoint) for p in compiled_exclusions) or any(
+                    p.match(path_only) for p in compiled_exclusions
+                )
+            else:
+                is_excluded = any(p.match(endpoint) for p in compiled_exclusions)
+
+        # Check negation patterns - these override exclusions
+        if is_excluded and compiled_negations:
+            if " " in endpoint:
+                _, path_only = endpoint.split(" ", 1)
+                is_negated = any(p.match(endpoint) for p in compiled_negations) or any(
+                    p.match(path_only) for p in compiled_negations
+                )
+            else:
+                is_negated = any(p.match(endpoint) for p in compiled_negations)
+
+            if is_negated:
+                is_excluded = False  # Negation overrides exclusion
+
+        if is_excluded:
             excluded.append(endpoint)
             continue
-        elif contains_escape_characters(endpoint):
+        if contains_escape_characters(endpoint):
             pattern = endpoint_to_regex(endpoint)
             is_covered = any(pattern.match(ep) for ep in called_data)
         else:
@@ -67,7 +107,15 @@ def print_endpoints(
     if endpoints:
         console.print(f"[{style}]{label}[/]:")
         for endpoint in endpoints:
-            console.print(f"  {symbol} [{style}]{endpoint}[/]")
+            # Format endpoint with consistent spacing for HTTP methods
+            if " " in endpoint:
+                method, path = endpoint.split(" ", 1)
+                # Pad method to 6 characters (longest common method is DELETE)
+                formatted_endpoint = f"{method:<6} {path}"
+            else:
+                # Handle legacy format without method
+                formatted_endpoint = endpoint
+            console.print(f"  {symbol} [{style}]{formatted_endpoint}[/]")
 
 
 def compute_coverage(covered_count: int, uncovered_count: int) -> float:
@@ -106,7 +154,6 @@ def generate_pytest_api_cov_report(
     discovered_endpoints: List[str],
 ) -> int:
     """Generate and print the API coverage report, returning an exit status."""
-
     console = Console()
 
     if not discovered_endpoints:

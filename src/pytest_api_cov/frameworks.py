@@ -21,8 +21,17 @@ class BaseAdapter:
 
 class FlaskAdapter(BaseAdapter):
     def get_endpoints(self) -> List[str]:
+        """Return list of 'METHOD /path' strings."""
         excluded_rules = ("/static/<path:filename>",)
-        return sorted([rule.rule for rule in self.app.url_map.iter_rules() if rule.rule not in excluded_rules])
+        endpoints = []
+
+        for rule in self.app.url_map.iter_rules():
+            if rule.rule not in excluded_rules:
+                for method in rule.methods:
+                    if method not in ("HEAD", "OPTIONS"):  # Skip automatic methods
+                        endpoints.append(f"{method} {rule.rule}")
+
+        return sorted(endpoints)
 
     def get_tracked_client(self, recorder: Optional["ApiCallRecorder"], test_name: str) -> Any:
         from flask.testing import FlaskClient
@@ -33,11 +42,13 @@ class FlaskAdapter(BaseAdapter):
         class TrackingFlaskClient(FlaskClient):
             def open(self, *args: Any, **kwargs: Any) -> Any:
                 path = kwargs.get("path") or (args[0] if args else None)
+                method = kwargs.get("method", "GET").upper()
+
                 if path and hasattr(self.application.url_map, "bind"):
                     try:
-                        endpoint_name, _ = self.application.url_map.bind("").match(path, method=kwargs.get("method"))
+                        endpoint_name, _ = self.application.url_map.bind("").match(path, method=method)
                         endpoint_rule_string = next(self.application.url_map.iter_rules(endpoint_name)).rule
-                        recorder.record_call(endpoint_rule_string, test_name)  # type: ignore[union-attr]
+                        recorder.record_call(endpoint_rule_string, test_name, method)  # type: ignore[union-attr]
                     except Exception:
                         pass
                 return super().open(*args, **kwargs)
@@ -47,9 +58,17 @@ class FlaskAdapter(BaseAdapter):
 
 class FastAPIAdapter(BaseAdapter):
     def get_endpoints(self) -> List[str]:
+        """Return list of 'METHOD /path' strings."""
         from fastapi.routing import APIRoute
 
-        return sorted([route.path for route in self.app.routes if isinstance(route, APIRoute)])
+        endpoints = []
+        for route in self.app.routes:
+            if isinstance(route, APIRoute):
+                for method in route.methods:
+                    if method not in ("HEAD", "OPTIONS"):
+                        endpoints.append(f"{method} {route.path}")
+
+        return sorted(endpoints)
 
     def get_tracked_client(self, recorder: Optional["ApiCallRecorder"], test_name: str) -> Any:
         from starlette.testclient import TestClient
@@ -61,7 +80,9 @@ class FastAPIAdapter(BaseAdapter):
             def send(self, *args: Any, **kwargs: Any) -> Any:
                 request = args[0]
                 if recorder is not None:
-                    recorder.record_call(request.url.path, test_name)
+                    method = request.method.upper()
+                    path = request.url.path
+                    recorder.record_call(path, test_name, method)
                 return super().send(*args, **kwargs)
 
         return TrackingFastAPIClient(self.app)
@@ -73,6 +94,8 @@ def get_framework_adapter(app: Any) -> BaseAdapter:
     module_name = getattr(type(app), "__module__", "").split(".")[0]
 
     if module_name == "flask" and app_type == "Flask":
+        return FlaskAdapter(app)
+    elif module_name == "flask_openapi3" and app_type == "OpenAPI":
         return FlaskAdapter(app)
     elif module_name == "fastapi" and app_type == "FastAPI":
         return FastAPIAdapter(app)

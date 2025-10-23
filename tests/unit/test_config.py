@@ -3,6 +3,7 @@
 import os
 from unittest.mock import Mock, patch
 
+from path import Path
 import pytest
 import tomli
 from pydantic import ValidationError
@@ -29,7 +30,7 @@ class TestConfigLoading:
         """
         (tmp_path / "pyproject.toml").write_text(pyproject_content)
 
-        original_cwd = os.getcwd()
+        original_cwd = Path.cwd()
         os.chdir(tmp_path)
         try:
             config = read_toml_config()
@@ -55,7 +56,7 @@ class TestConfigLoading:
         """Ensure it returns an empty dict if the [tool.pytest_api_cov] section is missing."""
         (tmp_path / "pyproject.toml").write_text("[project]\nname = 'test'")
 
-        original_cwd = os.getcwd()
+        original_cwd = Path.cwd()
         os.chdir(tmp_path)
         try:
             config = read_toml_config()
@@ -101,7 +102,7 @@ class TestConfigLoading:
         assert "fail_under" not in config
 
     @pytest.mark.parametrize(
-        "is_tty,encoding,stdout_bool,expected",
+        ("is_tty", "encoding", "stdout_bool", "expected"),
         [
             (False, "utf-8", True, False),
             (True, "utf-8", True, True),
@@ -149,6 +150,7 @@ class TestConfigMerging:
         assert final_config.fail_under == 90.0
         assert final_config.show_covered_endpoints is False
         assert final_config.exclusion_patterns == []
+        mock_read_session.assert_called_once()
 
     @patch("pytest_api_cov.config.read_session_config", return_value={})
     @patch("pytest_api_cov.config.read_toml_config")

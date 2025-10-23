@@ -79,12 +79,92 @@ class TestEndpointCategorization:
         assert set(uncovered) == {"/api/v1x0/users", "/api/v2.0/users"}
         assert set(excluded_out) == {"/api/v1.0/users"}
 
+    def test_categorise_with_negation_patterns(self):
+        """Test categorization with negation patterns that override exclusions."""
+        discovered = ["/users/alice", "/users/bob", "/users/charlie", "/admin/settings"]
+        called = {"/users/alice", "/users/bob"}
+        patterns = ["/users/*", "!/users/bob"]  # Exclude all users except bob
+
+        covered, uncovered, excluded_out = categorise_endpoints(discovered, called, patterns)
+        assert set(covered) == {"/users/bob"}  # bob is negated from exclusion
+        assert set(uncovered) == {"/admin/settings"}
+        assert set(excluded_out) == {"/users/alice", "/users/charlie"}  # alice and charlie are excluded
+
+    def test_categorise_with_multiple_negation_patterns(self):
+        """Test categorization with multiple negation patterns."""
+        discovered = ["/api/v1/users", "/api/v1/admin", "/api/v1/public", "/api/v2/users", "/health"]
+        called = {"/api/v1/users", "/api/v1/public"}
+        patterns = ["/api/v1/*", "!/api/v1/users", "!/api/v1/public"]  # Exclude v1 except users and public
+
+        covered, uncovered, excluded_out = categorise_endpoints(discovered, called, patterns)
+        assert set(covered) == {"/api/v1/users", "/api/v1/public"}  # negated from exclusion
+        assert set(uncovered) == {"/api/v2/users", "/health"}
+        assert set(excluded_out) == {"/api/v1/admin"}  # only admin is excluded
+
+    def test_categorise_with_negation_wildcard_patterns(self):
+        """Test negation patterns with wildcards."""
+        discovered = ["/admin/users/alice", "/admin/users/bob", "/admin/settings", "/public"]
+        called = {"/admin/users/alice"}
+        patterns = ["/admin/*", "!/admin/users/*"]  # Exclude all admin except admin/users/*
+
+        covered, uncovered, excluded_out = categorise_endpoints(discovered, called, patterns)
+        assert set(covered) == {"/admin/users/alice"}
+        assert set(uncovered) == {"/admin/users/bob", "/public"}  # bob is uncovered but not excluded
+        assert set(excluded_out) == {"/admin/settings"}  # settings is excluded
+
+    def test_categorise_with_method_endpoint_negation(self):
+        """Test negation patterns work with METHOD /path format."""
+        discovered = ["GET /users/alice", "POST /users/alice", "GET /users/bob", "GET /admin"]
+        called = {"GET /users/alice", "GET /users/bob"}
+        patterns = ["/users/*", "!/users/bob"]  # Exclude all users except bob
+
+        covered, uncovered, excluded_out = categorise_endpoints(discovered, called, patterns)
+        assert set(covered) == {"GET /users/bob"}  # bob is negated from exclusion
+        assert set(uncovered) == {"GET /admin"}
+        assert set(excluded_out) == {"GET /users/alice", "POST /users/alice"}  # alice endpoints excluded
+
+    def test_categorise_negation_without_matching_exclusion(self):
+        """Test that negation patterns without matching exclusions don't affect anything."""
+        discovered = ["/users/alice", "/users/bob", "/admin"]
+        called = {"/users/alice"}
+        patterns = ["!/users/charlie"]  # Negation for non-existent exclusion
+
+        covered, uncovered, excluded_out = categorise_endpoints(discovered, called, patterns)
+        assert set(covered) == {"/users/alice"}
+        assert set(uncovered) == {"/users/bob", "/admin"}
+        assert set(excluded_out) == set()  # Nothing excluded
+
+    def test_categorise_complex_exclusion_negation_scenario(self):
+        """Test complex scenario with multiple exclusions and negations."""
+        discovered = [
+            "/api/v1/users",
+            "/api/v1/admin",
+            "/api/v1/public",
+            "/api/v2/users",
+            "/api/v2/admin",
+            "/health",
+            "/metrics",
+            "/docs",
+        ]
+        called = {"/api/v1/users", "/api/v1/public", "/health"}
+        patterns = [
+            "/api/v1/*",  # Exclude all v1 endpoints
+            "/metrics",  # Exclude metrics
+            "!/api/v1/users",  # But include v1/users
+            "!/api/v1/public",  # But include v1/public
+        ]
+
+        covered, uncovered, excluded_out = categorise_endpoints(discovered, called, patterns)
+        assert set(covered) == {"/api/v1/users", "/api/v1/public", "/health"}
+        assert set(uncovered) == {"/api/v2/users", "/api/v2/admin", "/docs"}
+        assert set(excluded_out) == {"/api/v1/admin", "/metrics"}
+
 
 class TestCoverageCalculationAndReporting:
     """Tests for coverage computation and report generation."""
 
     @pytest.mark.parametrize(
-        "covered,uncovered,expected",
+        ("covered", "uncovered", "expected"),
         [(10, 0, 100.0), (0, 10, 0.0), (5, 5, 50.0), (3, 1, 75.0), (0, 0, 0.0)],
     )
     def test_compute_coverage(self, covered, uncovered, expected):
@@ -162,7 +242,7 @@ class TestCoverageCalculationAndReporting:
         assert "No endpoints discovered" in error_print.args[0]
 
     @pytest.mark.parametrize(
-        "force_sugar,expected_symbols",
+        ("force_sugar", "expected_symbols"),
         [
             (True, ["❌", "✅", "🚫"]),  # Unicode symbols
             (False, ["[X]", "[.]", "[-]"]),  # ASCII symbols

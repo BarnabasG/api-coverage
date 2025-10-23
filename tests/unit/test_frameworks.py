@@ -8,8 +8,9 @@ from pytest_api_cov.frameworks import FastAPIAdapter, FlaskAdapter, get_framewor
 
 
 class MockFlaskRule:
-    def __init__(self, rule):
+    def __init__(self, rule, methods=None):
         self.rule = rule
+        self.methods = methods or {"GET", "POST", "HEAD", "OPTIONS"}
 
 
 class MockFlaskURLMap:
@@ -18,14 +19,16 @@ class MockFlaskURLMap:
 
 
 class MockFastAPIRoute:
-    def __init__(self, path):
+    def __init__(self, path, methods=None):
         self.path = path
+        self.methods = methods or {"GET", "POST"}
 
 
 class TestFlaskAdapter:
     """Tests for the Flask framework adapter."""
 
     def setup_method(self):
+        """Set up test fixtures."""
         self.mock_app = Mock()
         self.mock_app.__module__ = "flask"
         type(self.mock_app).__name__ = "Flask"
@@ -35,7 +38,8 @@ class TestFlaskAdapter:
     def test_flask_get_endpoints(self):
         """Verify endpoint discovery for Flask."""
         endpoints = self.adapter.get_endpoints()
-        assert endpoints == ["/", "/users/<id>"]
+        expected = ["GET /", "GET /users/<id>", "POST /", "POST /users/<id>"]
+        assert sorted(endpoints) == sorted(expected)
 
     def test_flask_get_tracked_client_no_recorder(self):
         """Test that get_tracked_client returns normal client when recorder is None."""
@@ -49,7 +53,7 @@ class TestFlaskAdapter:
         recorder = {}
         client = self.adapter.get_tracked_client(recorder, "test_name")
         assert hasattr(client, "open")
-        assert "TrackingFlaskClient" in str(type(client)) or hasattr(client, "open")
+        assert "TrackingFlaskClient" in str(type(client))
 
     def test_flask_tracking_client_open_method(self):
         """Test the TrackingFlaskClient open method."""
@@ -74,9 +78,11 @@ class TestFlaskAdapter:
         recorder = {}
         client = self.adapter.get_tracked_client(recorder, "test_func")
 
-        with patch.object(client.__class__.__bases__[0], "open", return_value=Mock()) as mock_super_open:
-            with patch.object(self.mock_app.url_map, "iter_rules", side_effect=Exception("Unexpected error")):
-                client.open("/test", method="GET")
+        with (
+            patch.object(client.__class__.__bases__[0], "open", return_value=Mock()) as mock_super_open,
+            patch.object(self.mock_app.url_map, "iter_rules", side_effect=Exception("Unexpected error")),
+        ):
+            client.open("/test", method="GET")
 
         mock_super_open.assert_called_once()
         assert recorder == {}
@@ -103,7 +109,8 @@ class TestFastAPIAdapter:
         """Verify endpoint discovery for FastAPI."""
         with patch("fastapi.routing.APIRoute", MockFastAPIRoute):
             endpoints = self.adapter.get_endpoints()
-            assert endpoints == ["/", "/items/{item_id}"]
+            expected = ["GET /", "GET /items/{item_id}", "POST /", "POST /items/{item_id}"]
+            assert sorted(endpoints) == sorted(expected)
 
     def test_fastapi_get_tracked_client_no_recorder(self):
         """Test that get_tracked_client returns normal client when recorder is None."""
@@ -116,21 +123,27 @@ class TestFastAPIAdapter:
         recorder = {}
         client = self.adapter.get_tracked_client(recorder, "test_name")
         assert hasattr(client, "send")
-        assert "TrackingFastAPIClient" in str(type(client)) or hasattr(client, "send")
+        assert "TrackingFastAPIClient" in str(type(client))
 
     def test_fastapi_tracking_client_send_method(self):
-        """Test the TrackingFastAPIClient send method."""
-        recorder = {}
+        """Test the TrackingFastAPIClient send method exists and can be called."""
+        from pytest_api_cov.models import ApiCallRecorder
+
+        recorder = ApiCallRecorder()
         client = self.adapter.get_tracked_client(recorder, "test_name")
 
-        client.send = Mock(return_value="response")
+        assert hasattr(client, "send")
+        assert callable(client.send)
 
-        mock_request = Mock()
-        mock_request.url.path = "/test"
+        with patch.object(client.__class__.__bases__[0], "send", return_value="response") as mock_send:
+            mock_request = Mock()
+            mock_request.method = "GET"
+            mock_request.url.path = "/test"
 
-        response = client.send(mock_request)
-        assert response == "response"
-        assert "/test" in recorder or hasattr(client, "send")
+            response = client.send(mock_request)
+            assert response == "response"
+            mock_send.assert_called_once_with(mock_request)
+            assert "GET /test" in recorder.calls
 
 
 class TestBaseAdapter:
