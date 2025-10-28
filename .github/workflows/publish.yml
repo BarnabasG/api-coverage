@@ -1,0 +1,111 @@
+name: Publish to PyPI
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write  # Required to create and push tags
+      id-token: write  # Required for OIDC authentication (if using PyPI trusted publishing)
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for tags
+          token: ${{ secrets.GITHUB_TOKEN }}
+        
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          
+      - name: Read version from pyproject.toml
+        id: version
+        run: |
+          VERSION=$(uv version | awk '{print $2}')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Package version: $VERSION"
+          
+      - name: Check if version already published
+        id: check_published
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          
+          # Check if Git tag exists
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "tag_exists=true" >> $GITHUB_OUTPUT
+            echo "Git tag v$VERSION already exists"
+          else
+            echo "tag_exists=false" >> $GITHUB_OUTPUT
+            echo "Git tag v$VERSION does not exist"
+          fi
+          
+          # Check if version exists on PyPI
+          if curl -s "https://pypi.org/pypi/pytest-api-cov/$VERSION/json" > /dev/null 2>&1; then
+            echo "pypi_exists=true" >> $GITHUB_OUTPUT
+            echo "Version $VERSION already published to PyPI"
+          else
+            echo "pypi_exists=false" >> $GITHUB_OUTPUT
+            echo "Version $VERSION not found on PyPI"
+          fi
+          
+      - name: Create version tag
+        if: steps.check_published.outputs.tag_exists == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ steps.version.outputs.version }}" -m "Release version ${{ steps.version.outputs.version }}"
+          git push origin "v${{ steps.version.outputs.version }}"
+          
+      - name: Set up build environment
+        if: steps.check_published.outputs.pypi_exists == 'false'
+        run: |
+          uv sync --dev
+          
+      - name: Run pipeline (tests, linting, etc.)
+        if: steps.check_published.outputs.pypi_exists == 'false'
+        run: make pipeline
+        
+      - name: Build package
+        if: steps.check_published.outputs.pypi_exists == 'false'
+        run: make build
+        
+      - name: Publish to PyPI
+        if: steps.check_published.outputs.pypi_exists == 'false'
+        env:
+          PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          if [ -z "$PYPI_TOKEN" ]; then
+            echo "❌ PYPI_TOKEN secret is not set. Please configure it in repository settings."
+            echo "   Settings → Secrets and variables → Actions → New repository secret"
+            exit 1
+          fi
+          echo $PYPI_TOKEN > /tmp/pypi_token.txt
+          uv publish --token $(cat /tmp/pypi_token.txt)
+          rm /tmp/pypi_token.txt
+          
+      - name: Verify publication
+        if: steps.check_published.outputs.pypi_exists == 'false'
+        run: |
+          sleep 10  # Wait for PyPI to index the package
+          uv run --with pytest-api-cov --no-project -- python -c \
+            "import pytest_api_cov; print(f'✅ Published version: {pytest_api_cov.__version__}')"
+          
+      - name: Skip publish - already published
+        if: steps.check_published.outputs.pypi_exists == 'true'
+        run: |
+          echo "✅ Version ${{ steps.version.outputs.version }} already published to PyPI. Skipping publish."
+
