@@ -54,12 +54,13 @@ jobs:
           fi
           
           # Check if version exists on PyPI
-          if curl -s "https://pypi.org/pypi/pytest-api-cov/$VERSION/json" > /dev/null 2>&1; then
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://pypi.org/pypi/pytest-api-cov/$VERSION/json")
+          if [ "$HTTP_CODE" = "200" ]; then
             echo "pypi_exists=true" >> $GITHUB_OUTPUT
             echo "Version $VERSION already published to PyPI"
           else
             echo "pypi_exists=false" >> $GITHUB_OUTPUT
-            echo "Version $VERSION not found on PyPI"
+            echo "Version $VERSION not found on PyPI (HTTP $HTTP_CODE)"
           fi
           
       - name: Create version tag
