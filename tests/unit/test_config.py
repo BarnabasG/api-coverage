@@ -3,9 +3,9 @@
 import os
 from unittest.mock import Mock, patch
 
-from path import Path
 import pytest
 import tomli
+from path import Path
 from pydantic import ValidationError
 
 from pytest_api_cov.config import (
