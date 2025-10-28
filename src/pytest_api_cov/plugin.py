@@ -4,7 +4,7 @@ import importlib
 import importlib.util
 import logging
 import os
-from typing import Any, Optional
+from typing import Any, Generator, Optional
 
 import pytest
 
@@ -47,7 +47,7 @@ def auto_discover_app() -> Optional[Any]:
     found_files = []  # Track all files that exist
 
     for filename, attr_names in common_patterns:
-        if os.path.exists(filename):
+        if os.path.exists(filename):  # noqa: PTH110
             found_files.append(filename)
             logger.debug(f"> Found {filename}, checking for app variables...")
             try:
@@ -72,7 +72,7 @@ def auto_discover_app() -> Optional[Any]:
                                             p[0]
                                             for p in common_patterns[common_patterns.index((filename, attr_names)) :]
                                         ]
-                                        if os.path.exists(f) and f != filename
+                                        if os.path.exists(f) and f != filename  # noqa: PTH110
                                     ]
                                     if remaining_files:
                                         logger.debug(
@@ -85,7 +85,7 @@ def auto_discover_app() -> Optional[Any]:
                             else:
                                 logger.debug(f"> Found '{attr_name}' in {filename} but it's not a supported framework")
 
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 logger.debug(f"> Could not import {filename}: {e}")
                 continue
 
@@ -177,7 +177,7 @@ def pytest_sessionstart(session: pytest.Session) -> None:
 
 
 def create_coverage_fixture(fixture_name: str, existing_fixture_name: Optional[str] = None) -> Any:
-    """Helper function to create a coverage-enabled fixture with a custom name.
+    """Create a coverage-enabled fixture with a custom name.
 
     Args:
         fixture_name: The name for the new fixture
@@ -214,8 +214,8 @@ def create_coverage_fixture(fixture_name: str, existing_fixture_name: Optional[s
             try:
                 existing_client = request.getfixturevalue(existing_fixture_name)
                 logger.debug(f"> Found existing '{existing_fixture_name}' fixture, wrapping with coverage")
-            except pytest.FixtureLookupError:
-                raise RuntimeError(f"Existing fixture '{existing_fixture_name}' not found")
+            except pytest.FixtureLookupError as e:
+                raise RuntimeError(f"Existing fixture '{existing_fixture_name}' not found") from e
 
         app = get_app_from_fixture_or_auto_discover(request)
         if app and is_supported_framework(app):
@@ -231,7 +231,7 @@ def create_coverage_fixture(fixture_name: str, existing_fixture_name: Optional[s
                         coverage_data.add_discovered_endpoint(path, method, f"{framework_name.lower()}_adapter")
                     logger.info(f"> pytest-api-coverage: Discovered {len(endpoints)} endpoints.")
                     logger.debug(f"> Discovered endpoints: {endpoints}")
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 logger.warning(f"> pytest-api-coverage: Could not discover endpoints from app. Error: {e}")
 
         if existing_client:
@@ -257,7 +257,7 @@ def wrap_client_with_coverage(client: Any, recorder: Any, test_name: str) -> Any
     """Wrap an existing test client with coverage tracking."""
 
     class CoverageWrapper:
-        def __init__(self, wrapped_client: Any):
+        def __init__(self, wrapped_client: Any) -> None:
             self._wrapped = wrapped_client
 
         def __getattr__(self, name: str) -> Any:
@@ -296,7 +296,7 @@ def get_app_from_fixture_or_auto_discover(request: pytest.FixtureRequest) -> Any
 
 
 @pytest.fixture
-def coverage_client(request: pytest.FixtureRequest) -> Any:
+def coverage_client(request: pytest.FixtureRequest) -> Generator[Any, Any, None]:
     """Smart auto-discovering test coverage_client that records API calls for coverage.
 
     Tries to find an 'app' fixture first, then auto-discovers apps in common locations.
@@ -331,15 +331,17 @@ def coverage_client(request: pytest.FixtureRequest) -> Any:
                             coverage_data.add_discovered_endpoint(path, method, f"{framework_name.lower()}_adapter")
                         logger.info(f"> pytest-api-coverage: Discovered {len(endpoints)} endpoints.")
                         logger.debug(f"> Discovered endpoints: {endpoints}")
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     logger.warning(f"> pytest-api-coverage: Could not discover endpoints from app. Error: {e}")
 
             wrapped_client = wrap_client_with_coverage(existing_client, coverage_data.recorder, request.node.name)
             yield wrapped_client
-            return
 
         except pytest.FixtureLookupError:
             logger.warning(f"> Custom fixture '{config.client_fixture_name}' not found, falling back to auto-discovery")
+
+        else:
+            return
 
     app = get_app_from_fixture_or_auto_discover(request)
 
@@ -367,7 +369,7 @@ def coverage_client(request: pytest.FixtureRequest) -> Any:
                 coverage_data.add_discovered_endpoint(path, method, f"{framework_name.lower()}_adapter")
             logger.info(f"> pytest-api-coverage: Discovered {len(endpoints)} endpoints.")
             logger.debug(f"> Discovered endpoints: {endpoints}")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.warning(f"> pytest-api-coverage: Could not discover endpoints. Error: {e}")
 
     client = adapter.get_tracked_client(coverage_data.recorder, request.node.name)

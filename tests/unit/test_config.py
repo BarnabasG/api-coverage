@@ -42,13 +42,13 @@ class TestConfigLoading:
 
     def test_read_toml_config_file_not_found(self):
         """Ensure it returns an empty dict if pyproject.toml is missing."""
-        with patch("builtins.open", side_effect=FileNotFoundError):
+        with patch("pathlib.Path.open", side_effect=FileNotFoundError):
             config = read_toml_config()
             assert config == {}
 
     def test_read_toml_config_toml_decode_error(self):
         """Ensure it returns an empty dict if pyproject.toml has syntax errors."""
-        with patch("builtins.open", side_effect=tomli.TOMLDecodeError("Invalid TOML", "", 0)):
+        with patch("pathlib.Path.open", side_effect=tomli.TOMLDecodeError("Invalid TOML", "", 0)):
             config = read_toml_config()
             assert config == {}
 

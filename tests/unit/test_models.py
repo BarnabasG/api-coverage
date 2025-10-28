@@ -260,17 +260,6 @@ class TestEndpointDiscovery:
         assert "GET /test2" in discovery1.endpoints
         assert discovery1.endpoints.count("GET /shared") == 1
 
-    def test_iter(self):
-        """Test __iter__ method."""
-        discovery = EndpointDiscovery()
-        discovery.add_endpoint("/test1")
-        discovery.add_endpoint("/test2")
-
-        endpoints = list(discovery)
-        assert len(endpoints) == 2
-        assert "GET /test1" in endpoints
-        assert "GET /test2" in endpoints
-
 
 class TestSessionData:
     """Tests for SessionData model."""

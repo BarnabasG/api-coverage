@@ -1,11 +1,6 @@
 """pytest flag configuration for API coverage."""
 
-from typing import TYPE_CHECKING
-
 import pytest
-
-if TYPE_CHECKING:
-    import pytest
 
 
 def add_pytest_api_cov_flags(parser: pytest.Parser) -> None:

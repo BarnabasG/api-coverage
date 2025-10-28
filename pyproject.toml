@@ -27,6 +27,7 @@ dev = [
     "pytest-xdist>=3.8.0",
     "ruff>=0.12.3",
     "typeguard>=4.4.4",
+    "vulture>=2.14",
 ]
 
 # API COVERAGE
@@ -134,6 +135,22 @@ lint.ignore = [
     "TD003",
     "FIX002",
     "PLC0415",
+    "PLR0912",
+    "PLR0915",
+    "C901",
+    # Print statements are fine for CLI tools
+    "T201",
+    # Any types are common in plugin/interop code
+    "ANN401",
+    # Exception patterns
+    "EM102",
+    # Try-except patterns
+    "S110",
+    "S112",
+    # Magic numbers
+    "PLR2004",
+    # Private member access
+    "SLF001",
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -157,3 +174,10 @@ pretty = true
 show_column_numbers = true
 show_error_codes = true
 show_error_context = true
+
+[tool.vulture]
+exclude = []
+min_confidence = 80
+paths = ["src", "tests", "example"]
+sort_by_size = true
+verbose = false

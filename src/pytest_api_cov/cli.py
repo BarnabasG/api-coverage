@@ -1,46 +1,42 @@
 """CLI commands for setup and configuration."""
 
 import argparse
-import os
 import sys
+from pathlib import Path
 from typing import Optional, Tuple
 
 
 def detect_framework_and_app() -> Optional[Tuple[str, str, str]]:
     """Detect framework and app location.
+
     Returns (framework, file_path, app_variable) or None.
     """
-    import glob
-
     # Search for app files at any depth in current directory
     app_patterns = ["app.py", "main.py", "server.py", "wsgi.py", "asgi.py"]
     common_vars = ["app", "application", "main", "server"]
 
     # Find all matching files recursively
-    found_files = []
-    for pattern in app_patterns:
-        found_files.extend(glob.glob(f"**/{pattern}", recursive=True))
+    found_files = [file_path for pattern in app_patterns for file_path in Path().rglob(pattern)]
 
     # Sort by depth (shallowest first) and then by filename priority
-    found_files.sort(key=lambda x: (x.count(os.sep), app_patterns.index(os.path.basename(x))))
+    found_files.sort(key=lambda p: (len(p.parts), app_patterns.index(p.name)))
 
     for file_path in found_files:
         try:
-            with open(file_path, "r") as f:
-                content = f.read()
+            content = file_path.read_text()
 
             if "from fastapi import" in content or "import fastapi" in content:
                 framework = "FastAPI"
             elif "from flask import" in content or "import flask" in content:
                 framework = "Flask"
             else:
-                continue
+                continue  # Not a framework file we care about
 
             for var_name in common_vars:
                 if f"{var_name} = " in content:
-                    return framework, file_path, var_name
+                    return framework, file_path.as_posix(), var_name
 
-        except Exception:
+        except (IOError, UnicodeDecodeError):
             continue
 
     return None
@@ -88,7 +84,7 @@ def app():
 '''
 
 
-def generate_pyproject_config(framework: str) -> str:
+def generate_pyproject_config() -> str:
     """Generate pyproject.toml configuration section."""
     return """
 # pytest-api-cov configuration
@@ -133,7 +129,7 @@ def cmd_init() -> int:
         framework, file_path, app_variable = detection_result
         print(f"✅ Detected {framework} app in {file_path} (variable: {app_variable})")
 
-        conftest_exists = os.path.exists("conftest.py")
+        conftest_exists = Path("conftest.py").exists()
         if conftest_exists:
             print("⚠️  conftest.py already exists")
             create_conftest = input("Do you want to overwrite it? (y/N): ").lower().startswith("y")
@@ -142,15 +138,15 @@ def cmd_init() -> int:
 
         if create_conftest:
             conftest_content = generate_conftest_content(framework, file_path, app_variable)
-            with open("conftest.py", "w") as f:
+            with Path("conftest.py").open("w") as f:
                 f.write(conftest_content)
             print("✅ Created conftest.py")
 
-        pyproject_exists = os.path.exists("pyproject.toml")
+        pyproject_exists = Path("pyproject.toml").exists()
         if pyproject_exists:
-            print("ℹ️  pyproject.toml already exists")
+            print("ℹ️  pyproject.toml already exists")  # noqa: RUF001
             print("Add this configuration to your pyproject.toml:")
-            print(generate_pyproject_config(framework))
+            print(generate_pyproject_config())
         else:
             create_pyproject = input("Create pyproject.toml with pytest-api-cov config? (Y/n): ").lower()
             if not create_pyproject.startswith("n"):
@@ -158,12 +154,12 @@ def cmd_init() -> int:
 name = "your-project"
 version = "0.1.0"
 
-{generate_pyproject_config(framework)}
+{generate_pyproject_config()}
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 """
-                with open("pyproject.toml", "w") as f:
+                with Path("pyproject.toml").open("w") as f:
                     f.write(pyproject_content)
                 print("✅ Created pyproject.toml")
 
@@ -205,7 +201,7 @@ def read_root():
 
 
 def main() -> int:
-    """Main CLI entry point."""
+    """Run the main CLI entry point."""
     parser = argparse.ArgumentParser(prog="pytest-api-cov", description="pytest API coverage plugin CLI tools")
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")

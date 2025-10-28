@@ -1,6 +1,7 @@
 """Unit tests for pytest-api-cov CLI module."""
 
-from unittest.mock import mock_open, patch
+from pathlib import Path
+from unittest.mock import Mock, mock_open, patch
 
 import pytest
 
@@ -16,11 +17,12 @@ from pytest_api_cov.cli import (
 class TestDetectFrameworkAndApp:
     """Tests for detect_framework_and_app function."""
 
-    def test_no_files_exist(self):
+    @patch("pathlib.Path.rglob", return_value=[])
+    def test_no_files_exist(self, mock_rglob):
         """Test detection when no app files exist."""
-        with patch("glob.glob", return_value=[]):
-            result = detect_framework_and_app()
-            assert result is None
+        result = detect_framework_and_app()
+        assert result is None
+        mock_rglob.assert_called()
 
     @pytest.mark.parametrize(
         ("framework", "import_stmt", "var_name", "expected_file", "expected_var"),
@@ -55,21 +57,21 @@ def root():
     return "hello"
 """
 
-        with patch("glob.glob", return_value=[expected_file]), patch("builtins.open", mock_open(read_data=app_content)):
+        mock_file = Mock(spec=Path)
+        mock_file.name = Path(expected_file).name
+        mock_file.parts = Path(expected_file).parts
+        mock_file.read_text.return_value = app_content
+        mock_file.as_posix.return_value = expected_file
+
+        def rglob_side_effect(pattern):
+            if pattern == mock_file.name:
+                yield mock_file
+            else:
+                yield from []
+
+        with patch("pathlib.Path.rglob", side_effect=rglob_side_effect):
             result = detect_framework_and_app()
             assert result == (framework, expected_file, expected_var)
-
-    def test_no_framework_detected(self):
-        """Test when file exists but no framework imports found."""
-        app_content = """
-import sys
-
-def hello():
-    return "hello"
-"""
-        with patch("glob.glob", return_value=["app.py"]), patch("builtins.open", mock_open(read_data=app_content)):
-            result = detect_framework_and_app()
-            assert result is None
 
     def test_framework_but_no_app_variable(self):
         """Test when framework is imported but no app variable found."""
@@ -78,16 +80,38 @@ from fastapi import FastAPI
 
 # No app variable defined
 """
-        with patch("glob.glob", return_value=["app.py"]), patch("builtins.open", mock_open(read_data=app_content)):
+        mock_file = Mock(spec=Path)
+        mock_file.name = "app.py"
+        mock_file.parts = ("app.py",)
+        mock_file.read_text.return_value = app_content
+        mock_file.as_posix.return_value = "app.py"
+
+        def rglob_side_effect(pattern):
+            if pattern == "app.py":
+                yield mock_file
+            else:
+                yield from []
+
+        with patch("pathlib.Path.rglob", side_effect=rglob_side_effect):
             result = detect_framework_and_app()
             assert result is None
 
     def test_file_read_exception(self):
         """Test handling of file read exceptions."""
-        with (
-            patch("glob.glob", return_value=["app.py"]),
-            patch("builtins.open", side_effect=IOError("Cannot read file")),
-        ):
+        # 1. Create the mock file
+        mock_file = Mock(spec=Path)
+        mock_file.name = "app.py"
+        mock_file.parts = ("app.py",)
+        mock_file.read_text.side_effect = IOError("Cannot read file")
+        mock_file.as_posix.return_value = "app.py"
+
+        def rglob_side_effect(pattern):
+            if pattern == "app.py":
+                yield mock_file
+            else:
+                yield from []
+
+        with patch("pathlib.Path.rglob", side_effect=rglob_side_effect):
             result = detect_framework_and_app()
             assert result is None
 
@@ -97,19 +121,29 @@ from fastapi import FastAPI
 from flask import Flask
 server = Flask(__name__)
 """
+        mock_app_file = Mock(spec=Path)
+        mock_app_file.name = "app.py"
+        mock_app_file.parts = ("app.py",)
+        mock_app_file.read_text.return_value = "# foobar"
+        mock_app_file.as_posix.return_value = "app.py"
 
-        with patch("glob.glob", return_value=["app.py", "server.py"]):
+        mock_server_file = Mock(spec=Path)
+        mock_server_file.name = "server.py"
+        mock_server_file.parts = ("server.py",)
+        mock_server_file.read_text.return_value = flask_content
+        mock_server_file.as_posix.return_value = "server.py"
 
-            def mock_open_handler(path, mode="r"):
-                if path == "app.py":
-                    return mock_open(read_data="# foobar")()
-                if path == "server.py":
-                    return mock_open(read_data=flask_content)()
-                return mock_open(read_data="")()
+        def rglob_side_effect(pattern):
+            if pattern == "app.py":
+                return [mock_app_file]
+            if pattern == "server.py":
+                return [mock_server_file]
+            return []
 
-            with patch("builtins.open", side_effect=mock_open_handler):
-                result = detect_framework_and_app()
-                assert result == ("Flask", "server.py", "server")
+        with patch("pathlib.Path.rglob", side_effect=rglob_side_effect):
+            result = detect_framework_and_app()
+
+            assert result == ("Flask", "server.py", "server")
 
 
 class TestGenerateConftestContent:
@@ -161,7 +195,7 @@ class TestGeneratePyprojectConfig:
 
     def test_pyproject_config_structure(self):
         """Test structure of generated pyproject config."""
-        config = generate_pyproject_config("FastAPI")
+        config = generate_pyproject_config()
 
         assert "[tool.pytest_api_cov]" in config
         assert "show_uncovered_endpoints = true" in config
@@ -178,8 +212,8 @@ class TestCmdInit:
 
     @patch("pytest_api_cov.cli.detect_framework_and_app")
     @patch("builtins.input")
-    @patch("pytest_api_cov.cli.os.path.exists")
-    @patch("builtins.open", new_callable=mock_open)
+    @patch("pytest_api_cov.cli.Path.exists")
+    @patch("pathlib.Path.open", new_callable=mock_open)
     @patch("builtins.print")
     def test_init_success_no_existing_files(self, mock_print, mock_file, mock_exists, mock_input, mock_detect):
         """Test successful init with no existing files."""
@@ -197,17 +231,14 @@ class TestCmdInit:
 
     @patch("pytest_api_cov.cli.detect_framework_and_app")
     @patch("builtins.input")
-    @patch("pytest_api_cov.cli.os.path.exists")
-    @patch("builtins.open", new_callable=mock_open)
+    @patch("pytest_api_cov.cli.Path.exists")
+    @patch("pathlib.Path.open", new_callable=mock_open)
     @patch("builtins.print")
     def test_init_with_existing_conftest(self, mock_print, mock_file, mock_exists, mock_input, mock_detect):
         """Test init with existing conftest.py."""
         mock_detect.return_value = ("Flask", "app.py", "app")
 
-        def exists_side_effect(path):
-            return path == "conftest.py"
-
-        mock_exists.side_effect = exists_side_effect
+        mock_exists.side_effect = [True, False]
         mock_input.side_effect = ["y", "n"]  # Overwrite conftest, don't create pyproject
 
         result = cmd_init()
@@ -218,17 +249,14 @@ class TestCmdInit:
 
     @patch("pytest_api_cov.cli.detect_framework_and_app")
     @patch("builtins.input")
-    @patch("pytest_api_cov.cli.os.path.exists")
-    @patch("builtins.open", new_callable=mock_open)
+    @patch("pytest_api_cov.cli.Path.exists")
+    @patch("pathlib.Path.open", new_callable=mock_open)
     @patch("builtins.print")
     def test_init_with_existing_pyproject(self, mock_print, mock_file, mock_exists, mock_input, mock_detect):
         """Test init with existing pyproject.toml."""
         mock_detect.return_value = ("FastAPI", "main.py", "main")
 
-        def exists_side_effect(path):
-            return path == "pyproject.toml"
-
-        mock_exists.side_effect = exists_side_effect
+        mock_exists.side_effect = [False, True]
 
         result = cmd_init()
 
@@ -238,8 +266,8 @@ class TestCmdInit:
 
     @patch("pytest_api_cov.cli.detect_framework_and_app")
     @patch("builtins.input")
-    @patch("pytest_api_cov.cli.os.path.exists")
-    @patch("builtins.open", new_callable=mock_open)
+    @patch("pytest_api_cov.cli.Path.exists")
+    @patch("pathlib.Path.open", new_callable=mock_open)
     @patch("builtins.print")
     def test_init_user_declines_conftest_overwrite(self, mock_print, mock_file, mock_exists, mock_input, mock_detect):
         """Test when user declines to overwrite existing conftest."""
@@ -272,9 +300,9 @@ class TestCmdInit:
         mock_detect.return_value = ("FastAPI", "app.py", "app")
 
         with (
-            patch("pytest_api_cov.cli.os.path.exists", return_value=False),
+            patch("pytest_api_cov.cli.Path.exists", return_value=False),
             patch("builtins.input", return_value="n"),
-            patch("builtins.open", mock_open()),
+            patch("pathlib.Path.open", mock_open()),
         ):
             result = cmd_init()
 

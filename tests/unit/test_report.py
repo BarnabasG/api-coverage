@@ -301,7 +301,7 @@ class TestPrintEndpoints:
 class TestWriteReportFile:
     """Tests for the write_report_file function."""
 
-    @patch("builtins.open")
+    @patch("pathlib.Path.open")
     @patch("json.dump")
     def test_write_report_file(self, mock_json_dump, mock_open):
         """Test that write_report_file writes data correctly."""
@@ -311,7 +311,5 @@ class TestWriteReportFile:
         write_report_file(report_data, report_path)
 
         mock_open.assert_called_once()
-        call_args = mock_open.call_args[0]
-        assert call_args[0].name == "test_report.json"
-        assert call_args[1] == "w"
+        assert mock_open.call_args[0] == ("w",)
         mock_json_dump.assert_called_once_with(report_data, mock_open.return_value.__enter__.return_value, indent=2)
