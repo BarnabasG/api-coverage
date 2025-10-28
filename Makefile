@@ -61,7 +61,9 @@ build:
 	@uv sync
 	@uv build
 
-pipeline: format clean test cover typeguard test-example test-example-parallel
+pipeline-local: format clean test cover typeguard test-example test-example-parallel
+
+pipeline: format test cover typeguard test-example test-example-parallel
 
 publish: pipeline build
 	@echo "Publishing plugin..."
