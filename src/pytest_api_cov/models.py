@@ -93,10 +93,6 @@ class EndpointDiscovery(BaseModel):
         """Return number of discovered endpoints."""
         return len(self.endpoints)
 
-    def __iter__(self) -> Iterable[str]:  # type: ignore[override]
-        """Iterate over discovered endpoints."""
-        return iter(self.endpoints)
-
 
 class SessionData(BaseModel):
     """Model for session-level API coverage data."""

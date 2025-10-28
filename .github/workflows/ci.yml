@@ -51,6 +51,14 @@ jobs:
       - name: Run tests
         run: |
           make test
+      
+      - name: Run test example
+        run: |
+          make test-example
+      
+      - name: Run test example parallel (xdist)
+        run: |
+          make test-example-parallel
           
       - name: Run integration tests
         run: |

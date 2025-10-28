@@ -103,7 +103,7 @@ def print_endpoints(
     symbol: str,
     style: str,
 ) -> None:
-    """Prints a list of endpoints to the console with a label and style."""
+    """Print a list of endpoints to the console with a label and style."""
     if endpoints:
         console.print(f"[{style}]{label}[/]:")
         for endpoint in endpoints:
@@ -131,12 +131,12 @@ def prepare_endpoint_detail(endpoints: List[str], called_data: Dict[str, Set[str
         if contains_escape_characters(endpoint):
             pattern = endpoint_to_regex(endpoint)
             callers = set()
-            for call in called_data:
+            for call, call_set in called_data.items():
                 if pattern.match(call):
-                    callers.update(called_data[call])
+                    callers.update(call_set)
         else:
             callers = called_data.get(endpoint, set())
-        details.append({"endpoint": endpoint, "callers": sorted(list(callers))})
+        details.append({"endpoint": endpoint, "callers": sorted(callers)})
     return sorted(details, key=lambda x: len(x["callers"]))
 
 
@@ -144,7 +144,7 @@ def write_report_file(report_data: Dict[str, Any], report_path: str) -> None:
     """Write the report data to a JSON file."""
     path = Path(report_path).resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
+    with path.open("w") as f:
         json.dump(report_data, f, indent=2)
 
 

@@ -9,15 +9,20 @@ version:
 	@uv version
 
 ruff:
-	@echo "Running ruff..."
-	@uv run ruff format .
-	@uv run ruff check .
+	@echo "Running ruff format on src, tests, and example..."
+	@uv run ruff format src tests example
+	@echo "Running ruff check on src"
+	@uv run ruff check src
 
 mypy:
 	@echo "Running mypy..."
 	@uv run mypy
 
-format: ruff mypy
+vulture:
+	@echo "Running vulture..."
+	@uv run vulture
+
+format: ruff mypy vulture
 
 test:
 	@echo "Running plugin tests..."
