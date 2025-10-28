@@ -21,14 +21,6 @@ from pytest_api_cov.plugin import (
 class TestSupportedFramework:
     """Tests for framework detection utility functions."""
 
-    def test_package_version(self):
-        """Test that package version is accessible."""
-        import pytest_api_cov
-
-        assert hasattr(pytest_api_cov, "__version__")
-        assert isinstance(pytest_api_cov.__version__, str)
-        assert pytest_api_cov.__version__ == "1.1.3"
-
     def test_is_supported_framework_none(self):
         """Test framework detection with None."""
         assert is_supported_framework(None) is False

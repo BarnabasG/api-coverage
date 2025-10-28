@@ -1,9 +1,12 @@
 # Makefile
 
-.PHONY: ruff mypy test clean clean-all
+.PHONY: ruff mypy test clean clean-all version
 
 PYPI_TOKEN := $(shell type .pypi_token 2>nul || echo "")
 TEST_PYPI_TOKEN := $(shell type .test_pypi_token 2>nul || echo "")
+
+version:
+	@uv version
 
 ruff:
 	@echo "Running ruff..."
