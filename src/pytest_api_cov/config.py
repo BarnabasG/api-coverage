@@ -21,7 +21,9 @@ class ApiCoverageReportConfig(BaseModel):
     report_path: Optional[str] = Field(None, alias="api-cov-report-path")
     force_sugar: bool = Field(default=False, alias="api-cov-force-sugar")
     force_sugar_disabled: bool = Field(default=False, alias="api-cov-force-sugar-disabled")
-    client_fixture_names: List[str] = Field(["client", "test_client", "api_client", "app_client"], alias="api-cov-client-fixture-names")
+    client_fixture_names: List[str] = Field(
+        ["client", "test_client", "api_client", "app_client"], alias="api-cov-client-fixture-names"
+    )
     group_methods_by_endpoint: bool = Field(default=False, alias="api-cov-group-methods-by-endpoint")
 
 

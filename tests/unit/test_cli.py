@@ -6,144 +6,10 @@ from unittest.mock import Mock, mock_open, patch
 import pytest
 
 from pytest_api_cov.cli import (
-    cmd_init,
-    detect_framework_and_app,
     generate_conftest_content,
     generate_pyproject_config,
     main,
 )
-
-
-class TestDetectFrameworkAndApp:
-    """Tests for detect_framework_and_app function."""
-
-    @patch("pathlib.Path.rglob", return_value=[])
-    def test_no_files_exist(self, mock_rglob):
-        """Test detection when no app files exist."""
-        result = detect_framework_and_app()
-        assert result is None
-        mock_rglob.assert_called()
-
-    @pytest.mark.parametrize(
-        ("framework", "import_stmt", "var_name", "expected_file", "expected_var"),
-        [
-            ("FastAPI", "from fastapi import FastAPI", "app", "app.py", "app"),
-            ("Flask", "from flask import Flask", "application", "app.py", "application"),
-            ("FastAPI", "import fastapi\nfrom fastapi import FastAPI", "main", "main.py", "main"),
-            ("FastAPI", "from fastapi import FastAPI", "app", "src/main.py", "app"),
-            ("Flask", "from flask import Flask", "app", "example/src/main.py", "app"),
-        ],
-    )
-    def test_framework_app_detection(self, framework, import_stmt, var_name, expected_file, expected_var):
-        """Test detection of various framework apps."""
-        if framework == "FastAPI":
-            app_content = f"""
-{import_stmt}
-
-{var_name} = FastAPI()
-
-@{var_name}.get("/")
-def root():
-    return {{"message": "hello"}}
-"""
-        else:
-            app_content = f"""
-{import_stmt}
-
-{var_name} = Flask(__name__)
-
-@{var_name}.route("/")
-def root():
-    return "hello"
-"""
-
-        mock_file = Mock(spec=Path)
-        mock_file.name = Path(expected_file).name
-        mock_file.parts = Path(expected_file).parts
-        mock_file.read_text.return_value = app_content
-        mock_file.as_posix.return_value = expected_file
-
-        def rglob_side_effect(pattern):
-            if pattern == mock_file.name:
-                yield mock_file
-            else:
-                yield from []
-
-        with patch("pathlib.Path.rglob", side_effect=rglob_side_effect):
-            result = detect_framework_and_app()
-            assert result == (framework, expected_file, expected_var)
-
-    def test_framework_but_no_app_variable(self):
-        """Test when framework is imported but no app variable found."""
-        app_content = """
-from fastapi import FastAPI
-
-# No app variable defined
-"""
-        mock_file = Mock(spec=Path)
-        mock_file.name = "app.py"
-        mock_file.parts = ("app.py",)
-        mock_file.read_text.return_value = app_content
-        mock_file.as_posix.return_value = "app.py"
-
-        def rglob_side_effect(pattern):
-            if pattern == "app.py":
-                yield mock_file
-            else:
-                yield from []
-
-        with patch("pathlib.Path.rglob", side_effect=rglob_side_effect):
-            result = detect_framework_and_app()
-            assert result is None
-
-    def test_file_read_exception(self):
-        """Test handling of file read exceptions."""
-        # 1. Create the mock file
-        mock_file = Mock(spec=Path)
-        mock_file.name = "app.py"
-        mock_file.parts = ("app.py",)
-        mock_file.read_text.side_effect = IOError("Cannot read file")
-        mock_file.as_posix.return_value = "app.py"
-
-        def rglob_side_effect(pattern):
-            if pattern == "app.py":
-                yield mock_file
-            else:
-                yield from []
-
-        with patch("pathlib.Path.rglob", side_effect=rglob_side_effect):
-            result = detect_framework_and_app()
-            assert result is None
-
-    def test_multiple_files_checked(self):
-        """Test that multiple files are checked in order."""
-        flask_content = """
-from flask import Flask
-server = Flask(__name__)
-"""
-        mock_app_file = Mock(spec=Path)
-        mock_app_file.name = "app.py"
-        mock_app_file.parts = ("app.py",)
-        mock_app_file.read_text.return_value = "# foobar"
-        mock_app_file.as_posix.return_value = "app.py"
-
-        mock_server_file = Mock(spec=Path)
-        mock_server_file.name = "server.py"
-        mock_server_file.parts = ("server.py",)
-        mock_server_file.read_text.return_value = flask_content
-        mock_server_file.as_posix.return_value = "server.py"
-
-        def rglob_side_effect(pattern):
-            if pattern == "app.py":
-                return [mock_app_file]
-            if pattern == "server.py":
-                return [mock_server_file]
-            return []
-
-        with patch("pathlib.Path.rglob", side_effect=rglob_side_effect):
-            result = detect_framework_and_app()
-
-            assert result == ("Flask", "server.py", "server")
 
 
 class TestGenerateConftestContent:
@@ -154,20 +20,22 @@ class TestGenerateConftestContent:
         content = generate_conftest_content("FastAPI", "app.py", "app")
 
         assert "import pytest" in content
+        assert "from fastapi.testclient import TestClient" in content
         assert "from app import app" in content
-        assert "def app():" in content
-        assert "Provide the FastAPI app" in content
-        assert "return app" in content
+        assert "def client():" in content
+        assert "The pytest-api-cov plugin can extract the app from your client fixture" in content
+        assert "return TestClient(app)" in content
 
     def test_flask_conftest(self):
         """Test generating conftest for Flask."""
         content = generate_conftest_content("Flask", "main.py", "application")
 
         assert "import pytest" in content
+        assert "from flask.testing import FlaskClient" in content
         assert "from main import application" in content
-        assert "def app():" in content
-        assert "Provide the Flask app" in content
-        assert "return application" in content
+        assert "def client():" in content
+        assert "The pytest-api-cov plugin can extract the app from your client fixture" in content
+        assert "return FlaskClient(app)" in content
 
     def test_subdirectory_conftest(self):
         """Test generating conftest for app in subdirectory."""
@@ -175,9 +43,8 @@ class TestGenerateConftestContent:
 
         assert "import pytest" in content
         assert "from src.main import app" in content
-        assert "def app():" in content
-        assert "Provide the FastAPI app" in content
-        assert "return app" in content
+        assert "def client():" in content
+        assert "return TestClient(app)" in content
 
     def test_nested_subdirectory_conftest(self):
         """Test generating conftest for app in nested subdirectory."""
@@ -185,9 +52,8 @@ class TestGenerateConftestContent:
 
         assert "import pytest" in content
         assert "from example.src.main import app" in content
-        assert "def app():" in content
-        assert "Provide the Flask app" in content
-        assert "return app" in content
+        assert "def client():" in content
+        assert "return FlaskClient(app)" in content
 
 
 class TestGeneratePyprojectConfig:
@@ -207,147 +73,41 @@ class TestGeneratePyprojectConfig:
         assert "# force_sugar" in config
 
 
-class TestCmdInit:
-    """Tests for cmd_init function."""
-
-    @patch("pytest_api_cov.cli.detect_framework_and_app")
-    @patch("builtins.input")
-    @patch("pytest_api_cov.cli.Path.exists")
-    @patch("pathlib.Path.open", new_callable=mock_open)
-    @patch("builtins.print")
-    def test_init_success_no_existing_files(self, mock_print, mock_file, mock_exists, mock_input, mock_detect):
-        """Test successful init with no existing files."""
-        mock_detect.return_value = ("FastAPI", "app.py", "app")
-        mock_exists.return_value = False  # No existing files
-        mock_input.return_value = "y"  # User agrees to create pyproject.toml
-
-        result = cmd_init()
-
-        assert result == 0
-        # conftest.py and pyproject.toml
-        assert mock_file.call_count == 2
-        mock_print.assert_any_call("✅ Created conftest.py")
-        mock_print.assert_any_call("✅ Created pyproject.toml")
-
-    @patch("pytest_api_cov.cli.detect_framework_and_app")
-    @patch("builtins.input")
-    @patch("pytest_api_cov.cli.Path.exists")
-    @patch("pathlib.Path.open", new_callable=mock_open)
-    @patch("builtins.print")
-    def test_init_with_existing_conftest(self, mock_print, mock_file, mock_exists, mock_input, mock_detect):
-        """Test init with existing conftest.py."""
-        mock_detect.return_value = ("Flask", "app.py", "app")
-
-        mock_exists.side_effect = [True, False]
-        mock_input.side_effect = ["y", "n"]  # Overwrite conftest, don't create pyproject
-
-        result = cmd_init()
-
-        assert result == 0
-        mock_print.assert_any_call("⚠️  conftest.py already exists")
-        mock_print.assert_any_call("✅ Created conftest.py")
-
-    @patch("pytest_api_cov.cli.detect_framework_and_app")
-    @patch("builtins.input")
-    @patch("pytest_api_cov.cli.Path.exists")
-    @patch("pathlib.Path.open", new_callable=mock_open)
-    @patch("builtins.print")
-    def test_init_with_existing_pyproject(self, mock_print, mock_file, mock_exists, mock_input, mock_detect):
-        """Test init with existing pyproject.toml."""
-        mock_detect.return_value = ("FastAPI", "main.py", "main")
-
-        mock_exists.side_effect = [False, True]
-
-        result = cmd_init()
-
-        assert result == 0
-        mock_print.assert_any_call("ℹ️  pyproject.toml already exists")
-        mock_print.assert_any_call("Add this configuration to your pyproject.toml:")
-
-    @patch("pytest_api_cov.cli.detect_framework_and_app")
-    @patch("builtins.input")
-    @patch("pytest_api_cov.cli.Path.exists")
-    @patch("pathlib.Path.open", new_callable=mock_open)
-    @patch("builtins.print")
-    def test_init_user_declines_conftest_overwrite(self, mock_print, mock_file, mock_exists, mock_input, mock_detect):
-        """Test when user declines to overwrite existing conftest."""
-        mock_detect.return_value = ("FastAPI", "app.py", "app")
-        mock_exists.return_value = True  # conftest.py exists
-        mock_input.side_effect = ["n", "n"]  # Don't overwrite conftest or create pyproject
-
-        result = cmd_init()
-
-        assert result == 0
-        mock_print.assert_any_call("⚠️  conftest.py already exists")
-
-    @patch("pytest_api_cov.cli.detect_framework_and_app")
-    @patch("builtins.open", new_callable=mock_open)
-    @patch("builtins.print")
-    def test_init_no_app_detected(self, mock_print, mock_file, mock_detect):  # noqa: ARG002
-        """Test init when no app is detected."""
-        mock_detect.return_value = None
-
-        result = cmd_init()
-
-        assert result == 1
-        mock_print.assert_any_call("❌ No FastAPI or Flask app detected in common locations")
-        mock_print.assert_any_call("Example app.py:")
-
-    @patch("pytest_api_cov.cli.detect_framework_and_app")
-    @patch("builtins.print")
-    def test_init_prints_next_steps(self, mock_print, mock_detect):
-        """Test that init prints helpful next steps."""
-        mock_detect.return_value = ("FastAPI", "app.py", "app")
-
-        with (
-            patch("pytest_api_cov.cli.Path.exists", return_value=False),
-            patch("builtins.input", return_value="n"),
-            patch("pathlib.Path.open", mock_open()),
-        ):
-            result = cmd_init()
-
-        assert result == 0
-        mock_print.assert_any_call("🎉 Setup complete!")
-        mock_print.assert_any_call("Next steps:")
-        mock_print.assert_any_call("1. Write your tests using the 'coverage_client' fixture")
-        mock_print.assert_any_call("2. Run: pytest --api-cov-report")
-
-
 class TestMain:
     """Tests for main function."""
 
-    @patch("pytest_api_cov.cli.cmd_init")
-    @patch("sys.argv", ["pytest-api-cov", "init"])
-    def test_main_init_command(self, mock_cmd_init):
-        """Test main with init command."""
-        mock_cmd_init.return_value = 0
-
-        result = main()
-
+    def test_main_show_pyproject(self, monkeypatch):
+        """Test main prints pyproject snippet for show-pyproject."""
+        monkeypatch.setattr("sys.argv", ["pytest-api-cov", "show-pyproject"])
+        with patch("builtins.print") as mock_print:
+            result = main()
         assert result == 0
-        mock_cmd_init.assert_called_once()
+        mock_print.assert_called()
 
-    @patch("sys.argv", ["pytest-api-cov"])
-    def test_main_no_command(self):
+    def test_main_show_conftest(self, monkeypatch):
+        """Test main prints conftest snippet for show-conftest."""
+        monkeypatch.setattr("sys.argv", ["pytest-api-cov", "show-conftest", "FastAPI", "src.main", "app"])
+        with patch("builtins.print") as mock_print:
+            result = main()
+        assert result == 0
+        mock_print.assert_called()
+
+    def test_main_no_command(self, monkeypatch):
         """Test main with no command (should show help)."""
+        monkeypatch.setattr("sys.argv", ["pytest-api-cov"])
         result = main()
 
         assert result == 1
 
-    @patch("sys.argv", ["pytest-api-cov", "unknown"])
     def test_main_unknown_command(self):
         """Test main with unknown command."""
         with pytest.raises(SystemExit) as exc_info:
-            main()
+            monkeypatch = pytest.MonkeyPatch()
+            try:
+                monkeypatch.setenv("DUMMY", "1")  # noop to obtain monkeypatch object
+                monkeypatch.setattr("sys.argv", ["pytest-api-cov", "unknown"])
+                main()
+            finally:
+                monkeypatch.undo()
 
         assert exc_info.value.code == 2
-
-    @patch("pytest_api_cov.cli.cmd_init")
-    @patch("sys.argv", ["pytest-api-cov", "init"])
-    def test_main_init_command_failure(self, mock_cmd_init):
-        """Test main when init command fails."""
-        mock_cmd_init.return_value = 1
-
-        result = main()
-
-        assert result == 1

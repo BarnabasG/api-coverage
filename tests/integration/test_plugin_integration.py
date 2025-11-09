@@ -99,7 +99,7 @@ def test_custom_fixture_wrapping_flask(pytester):
 
     result = pytester.runpytest(
         "--api-cov-report",
-        "--api-cov-client-fixture-name=my_custom_client",
+        "--api-cov-client-fixture-names=my_custom_client",
         "--api-cov-show-covered-endpoints",
     )
 
@@ -150,7 +150,7 @@ def test_custom_fixture_wrapping_fastapi(pytester):
 
     result = pytester.runpytest(
         "--api-cov-report",
-        "--api-cov-client-fixture-name=my_api_client",
+        "--api-cov-client-fixture-names=my_api_client",
         "--api-cov-show-covered-endpoints",
     )
 
@@ -188,7 +188,7 @@ def test_custom_fixture_fallback_when_not_found(pytester):
 
     result = pytester.runpytest(
         "--api-cov-report",
-        "--api-cov-client-fixture-name=nonexistent_fixture",
+        "--api-cov-client-fixture-names=nonexistent_fixture",
     )
 
     assert result.ret == 0
@@ -267,6 +267,14 @@ def test_multiple_auto_discover_files_uses_first(pytester):
                 @app.route("/from-main-py")
                 def from_main():
                     return "From main.py"
+            """,
+            "conftest.py": """
+                import pytest
+                from app import app as app_instance
+
+                @pytest.fixture
+                def app():
+                    return app_instance
             """,
             "test_multiple.py": """
                 def test_endpoint(coverage_client):

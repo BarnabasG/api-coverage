@@ -8,7 +8,6 @@ import pytest
 from pytest_api_cov.models import SessionData
 from pytest_api_cov.plugin import (
     DeferXdistPlugin,
-    auto_discover_app,
     is_supported_framework,
     pytest_addoption,
     pytest_configure,
@@ -44,20 +43,6 @@ class TestSupportedFramework:
         mock_app.__class__.__name__ = "Django"
         mock_app.__class__.__module__ = "django.core"
         assert is_supported_framework(mock_app) is False
-
-    @patch("os.path.exists", return_value=False)
-    def test_auto_discover_app_no_files(self, mock_exists):
-        """Test auto-discovery when no app files exist."""
-        result = auto_discover_app()
-        assert result is None
-        mock_exists.assert_called()
-
-    @patch("importlib.util.spec_from_file_location")
-    def test_auto_discover_app_import_error(self, mock_spec_from_file):
-        """Test auto-discovery when import fails."""
-        mock_spec_from_file.return_value = None
-        result = auto_discover_app()
-        assert result is None
 
 
 class TestPluginHooks:

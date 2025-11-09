@@ -2,8 +2,6 @@
 
 import argparse
 import sys
-from pathlib import Path
-from typing import Optional, Tuple
 
 
 def generate_conftest_content(framework: str, file_path: str, app_variable: str) -> str:
