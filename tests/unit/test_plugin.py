@@ -9,7 +9,6 @@ from pytest_api_cov.models import SessionData
 from pytest_api_cov.plugin import (
     DeferXdistPlugin,
     auto_discover_app,
-    get_helpful_error_message,
     is_supported_framework,
     pytest_addoption,
     pytest_configure,
@@ -59,13 +58,6 @@ class TestSupportedFramework:
         mock_spec_from_file.return_value = None
         result = auto_discover_app()
         assert result is None
-
-    def test_get_helpful_error_message(self):
-        """Test that helpful error message is generated."""
-        message = get_helpful_error_message()
-        assert "No API app found" in message
-        assert "Quick Setup Options" in message
-        assert "pytest-api-cov init" in message
 
 
 class TestPluginHooks:

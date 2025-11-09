@@ -5,9 +5,9 @@ A **pytest plugin** that measures **API endpoint coverage** for FastAPI and Flas
 ## Features
 
 - **Zero Configuration**: Plug-and-play with Flask/FastAPI apps - just install and run
+- **Client-Based Discovery**: Automatically extracts app from your existing test client fixtures
 - **Terminal Reports**: Rich terminal output with detailed coverage information
 - **JSON Reports**: Export coverage data for CI/CD integration
-- **Setup Wizard**: Interactive setup wizard for complex projects
 
 ## Quick Start
 
@@ -28,25 +28,13 @@ pytest --api-cov-report
 
 ### App Location Flexibility
 
-**Zero Config**: Works automatically if your app is in `app.py`, `main.py`, or `server.py`
+Discovery in this plugin is client-based: the plugin extracts the application instance from your test client fixtures, or from an `app` fixture when present. This means the plugin integrates with the test clients or fixtures you already use in your tests rather than relying on background file scanning.
 
-**Any Location**: Place your app anywhere in your project - just create a `conftest.py`:
+How discovery works (in order):
 
-```python
-import pytest
-from my_project.backend.api import my_app  # Any import path!
-
-@pytest.fixture
-def app():
-    return my_app
-```
-
-The plugin will automatically discover your Flask/FastAPI app if it's in common locations:
-- `app.py` (with variable `app`, `application`, or `main`)
-- `main.py` (with variable `app`, `application`, or `main`) 
-- `server.py` (with variable `app`, `application`, or `server`)
-
-**Your app can be located anywhere!** If it's not in a standard location, just create a `conftest.py` file to tell the plugin where to find it.
+1. If you configure one or more candidate client fixture names (see configuration below), the plugin will try each in order and wrap the first matching fixture it finds.
+2. If no configured client fixture is found, the plugin will look for a standard `app` fixture and use that to create a tracked client.
+3. If neither a client fixture nor an `app` fixture is available (or the plugin cannot extract an app from the client), coverage tracking will be skipped and a helpful message is shown.
 
 ### Example
 
@@ -97,7 +85,7 @@ API Coverage Report
 Uncovered Endpoints:
   ❌ GET    /health
 
-Total API Coverage: 66.67%
+Total API Coverage: 75.0%
 ```
 
 Or running with advanced options:
@@ -118,6 +106,16 @@ Excluded Endpoints:
 Total API Coverage: 50.0%
 
 JSON report saved to api_coverage.json
+```
+
+### See examples
+
+```bash
+# Print an example pyproject.toml configuration snippet
+pytest-api-cov show-pyproject
+
+# Print an example conftest.py for a known app module
+pytest-api-cov show-conftest FastAPI src.main app
 ```
 
 ## HTTP Method-Aware Coverage
@@ -160,19 +158,6 @@ Total API Coverage: 100.0%  # All endpoints have at least one method tested
 
 ## Advanced Configuration
 
-### Setup Wizard
-
-If auto-discovery doesn't work for your project, use the interactive setup wizard:
-
-```bash
-pytest-api-cov init
-```
-
-This will:
-- Detect your framework and app location
-- Create a `conftest.py` fixture if needed
-- Generate suggested `pyproject.toml` configuration
-
 ### Manual Configuration
 
 Create a `conftest.py` file to specify your app location (works with **any** file path or structure):
@@ -194,7 +179,15 @@ This approach works with any project structure - the plugin doesn't care where y
 
 ### Custom Test Client Fixtures
 
-You have several options for using custom client fixtures:
+The plugin can wrap existing test client fixtures automatically. Recent changes allow you to specify one or more candidate fixture names (the plugin will try them in order) instead of a single configured name.
+
+Default client fixture names the plugin will look for (in order):
+- `client`
+- `test_client`
+- `api_client`
+- `app_client`
+
+If you use a different fixture name, you can provide one or more names via the CLI flag `--api-cov-client-fixture-names` (repeatable) or in `pyproject.toml` under `[tool.pytest_api_cov]` as `client_fixture_names` (a list).
 
 #### Option 1: Helper Function
 
@@ -226,33 +219,27 @@ def test_with_flask_client(flask_client):
     assert response.status_code == 200
 ```
 
-#### Option 2: Configuration-Based
+The helper returns a pytest fixture you can assign to a name in `conftest.py`.
 
-Configure an existing fixture to be wrapped automatically:
+#### Option 2: Configuration-Based (recommended for most users)
 
-```python
-import pytest
-from fastapi.testclient import TestClient
-from your_app import app
+Configure one or more existing fixture names to be discovered and wrapped automatically by the plugin.
 
-@pytest.fixture
-def my_custom_client():
-    """Custom test client with authentication."""
-    client = TestClient(app)
-    client.headers.update({"Authorization": "Bearer test-token"})
-    return client
-
-def test_endpoint(coverage_client):
-    response = coverage_client.get("/protected-endpoint")
-    assert response.status_code == 200
-```
-
-Configure it in `pyproject.toml`:
+Example `pyproject.toml`:
 
 ```toml
 [tool.pytest_api_cov]
-client_fixture_name = "my_custom_client"
+# Provide a list of candidate fixture names the plugin should try (order matters)
+client_fixture_names = ["my_custom_client"]
 ```
+
+Or use the CLI flag multiple times:
+
+```bash
+pytest --api-cov-report --api-cov-client-fixture-names=my_custom_client --api-cov-client-fixture-names=another_fixture
+```
+
+If the configured fixture(s) are not found, the plugin will try to use an `app` fixture (if present) to create a tracked client. If neither is available or the plugin cannot extract the app from a discovered client fixture, the tests will still run — coverage will simply be unavailable and a warning will be logged.
 
 ### Configuration Options
 
@@ -272,13 +259,11 @@ show_excluded_endpoints = false
 # Use * for wildcard matching, all other characters are matched literally
 # Use ! at the start to negate a pattern (include what would otherwise be excluded)
 exclusion_patterns = [
-    "/health",        # Exact match
-    "/metrics",       # Exact match
-    "/docs/*",        # Wildcard: matches /docs/swagger, /docs/openapi, etc.
-    "/admin/*",       # Wildcard: matches all admin endpoints
-    "!/admin/public", # Negation: include /admin/public even though /admin/* excludes it
-    "/api/v1.0/*",    # Exact version match (won't match /api/v1x0/*)
-    "!/api/v1.0/health" # Negation: include /api/v1.0/health even though /api/v1.0/* excludes it
+    "/health",
+    "/metrics",
+    "/docs/*",
+    "/admin/*",
+    "!/admin/public",
 ]
 
 # Save detailed JSON report
@@ -290,13 +275,12 @@ force_sugar = true
 # Force no Unicode symbols in output
 force_sugar_disabled = true
 
-# Wrap an existing custom test client fixture with coverage tracking
-client_fixture_name = "my_custom_client"
+# Provide candidate fixture names (in priority order).
+client_fixture_names = ["my_custom_client"]
 
 # Group HTTP methods by endpoint for legacy behavior (default: false)
-# When true: treats GET /users and POST /users as one "/users" endpoint  
-# When false: treats them as separate "GET /users" and "POST /users" endpoints (recommended)
 group_methods_by_endpoint = false
+
 ```
 
 ### Command Line Options
@@ -323,8 +307,8 @@ pytest --api-cov-report --api-cov-report-path=api_coverage.json
 # Exclude specific endpoints (supports wildcards and negation)
 pytest --api-cov-report --api-cov-exclusion-patterns="/health" --api-cov-exclusion-patterns="/docs/*"
 
-# Exclude with negation (exclude all admin except admin/public)
-pytest --api-cov-report --api-cov-exclusion-patterns="/admin/*" --api-cov-exclusion-patterns="!/admin/public"
+# Specify one or more existing client fixture names (repeatable)
+pytest --api-cov-report --api-cov-client-fixture-names=my_custom_client --api-cov-client-fixture-names=another_fixture
 
 # Verbose logging (shows discovery process)
 pytest --api-cov-report -v
@@ -450,71 +434,28 @@ jobs:
 
 ### No App Found
 
-If you see "No API app found", you have several options:
+If coverage is not running because the plugin could not locate an app, check the following:
 
-**Option 1 - Auto-discovery (Zero Config)**
-Place your app in a standard location with a standard name:
-- Files: `app.py`, `main.py`, `server.py`, `wsgi.py`, `asgi.py`
-- Variable names: `app`, `application`, `main`, `server`
+- Ensure you are running pytest with `--api-cov-report` enabled.
+- Confirm you have a test client fixture (e.g. `client`, `test_client`, `api_client`) or an `app` fixture in your test suite.
+- If you use a custom client fixture, add its name to `client_fixture_names` in `pyproject.toml` or pass it via the CLI using `--api-cov-client-fixture-names` (repeatable) so the plugin can find and wrap it.
+- If the plugin finds the client fixture but cannot extract the underlying app (for example the client type is not supported or wrapped in an unexpected way), you will see a message like "Could not extract app from client" — in that case either provide an `app` fixture directly or wrap your existing client using `create_coverage_fixture`.
 
-**Option 2 - Custom Location (Any File/Path)**
-Create a `conftest.py` file to specify your app location:
+### No endpoints Discovered
 
-```python
-import pytest
-from my_project.api.server import my_flask_app  # Any import path
-# or from src.backend.main import fastapi_instance
-# or from anywhere import your_app
+If you still see no endpoints discovered:
 
-@pytest.fixture
-def app():
-    return my_flask_app  # Return your app instance
-```
-
-**Option 3 - Override Auto-discovery**
-If you have multiple auto-discoverable files or want to use a different app:
-
-```python
-# Even if you have app.py, you can override it
-import pytest
-from main import my_real_app  # Use this instead of app.py
-
-@pytest.fixture
-def app():
-    return my_real_app
-```
-
-**Option 4 - Setup Wizard**
-Run the interactive setup: `pytest-api-cov init`
-
-The plugin will automatically find your app using the `app` fixture first, then fall back to auto-discovery in common locations. This means you can place your app **anywhere** as long as you create the fixture.
-
-### Multiple App Files
-
-If you have multiple files that could be auto-discovered (e.g., both `app.py` and `main.py`), the plugin will use the **first valid app it finds** in this priority order:
-
-1. `app.py` 
-2. `main.py`
-3. `server.py`
-4. `wsgi.py`
-5. `asgi.py`
-
-To use a specific app when multiple exist, create a `conftest.py` with an `app` fixture pointing to your preferred app.
-
-### No Endpoints Discovered
-
-If you see "No endpoints discovered":
-
-1. Check that your app is properly instantiated
-2. Verify your routes/endpoints are defined
-3. Ensure the `coverage_client` fixture is working in your tests
-4. Use `-v` or `-vv` for debug information
+1. Check that your app is properly instantiated inside the fixture or client.
+2. Verify your routes/endpoints are defined and reachable by the test client.
+3. Ensure the `coverage_client` fixture is being used in your tests (or that your configured client fixture is listed and discovered).
+4. Use `-v` or `-vv` for debug logging to see why the plugin skipped discovery or wrapping.
 
 ### Framework Not Detected
 
 The plugin supports:
-- **FastAPI**: Detected by `from fastapi import` or `import fastapi`
-- **Flask**: Detected by `from flask import` or `import flask`
+- **FastAPI**: Detected by `FastAPI` class
+- **Flask**: Detected by `Flask` class
+- **FlaskOpenAPI3**: Detected by `FlaskOpenAPI3` class
 
 Other frameworks are not currently supported.
 
