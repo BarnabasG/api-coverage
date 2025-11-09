@@ -8,13 +8,14 @@ import pytest
 from pytest_api_cov.models import SessionData
 from pytest_api_cov.plugin import (
     DeferXdistPlugin,
-    auto_discover_app,
-    get_helpful_error_message,
     is_supported_framework,
     pytest_addoption,
     pytest_configure,
     pytest_sessionfinish,
     pytest_sessionstart,
+    extract_app_from_client,
+    wrap_client_with_coverage,
+    create_coverage_fixture,
 )
 
 
@@ -45,27 +46,6 @@ class TestSupportedFramework:
         mock_app.__class__.__name__ = "Django"
         mock_app.__class__.__module__ = "django.core"
         assert is_supported_framework(mock_app) is False
-
-    @patch("os.path.exists", return_value=False)
-    def test_auto_discover_app_no_files(self, mock_exists):
-        """Test auto-discovery when no app files exist."""
-        result = auto_discover_app()
-        assert result is None
-        mock_exists.assert_called()
-
-    @patch("importlib.util.spec_from_file_location")
-    def test_auto_discover_app_import_error(self, mock_spec_from_file):
-        """Test auto-discovery when import fails."""
-        mock_spec_from_file.return_value = None
-        result = auto_discover_app()
-        assert result is None
-
-    def test_get_helpful_error_message(self):
-        """Test that helpful error message is generated."""
-        message = get_helpful_error_message()
-        assert "No API app found" in message
-        assert "Quick Setup Options" in message
-        assert "pytest-api-cov init" in message
 
 
 class TestPluginHooks:
@@ -373,3 +353,139 @@ class TestDeferXdistPlugin:
         assert "/new" in worker_data
         assert "existing_test" in worker_data["/existing"]
         assert "new_test" in worker_data["/new"]
+
+
+def test_extract_app_from_client_variants():
+    """Extract app from different client shapes."""
+    app = object()
+
+    class A:
+        def __init__(self):
+            self.app = app
+
+    class B:
+        def __init__(self):
+            self.application = app
+
+    class Transport:
+        def __init__(self):
+            self.app = app
+
+    class C:
+        def __init__(self):
+            self._transport = Transport()
+
+    class D:
+        def __init__(self):
+            self._app = app
+
+    assert extract_app_from_client(A()) is app
+    assert extract_app_from_client(B()) is app
+    assert extract_app_from_client(C()) is app
+    assert extract_app_from_client(D()) is app
+    assert extract_app_from_client(None) is None
+
+
+def test_wrap_client_with_coverage_records_various_call_patterns():
+    """Tracked client records calls for string path, request-like, and kwargs."""
+    recorder = Mock()
+
+    class DummyReq:
+        def __init__(self, path, method="GET"):
+            class URL:
+                def __init__(self, p):
+                    self.path = p
+
+            self.url = URL(path)
+            self.method = method
+
+    class Client:
+        def get(self, *args, **kwargs):
+            return "GET-OK"
+
+        def open(self, *args, **kwargs):
+            return "OPEN-OK"
+
+    client = Client()
+    wrapped = wrap_client_with_coverage(client, recorder, "test_fn")
+
+    assert wrapped.get("/foo") == "GET-OK"
+    recorder.record_call.assert_called_with("/foo", "test_fn", "GET")
+
+    recorder.reset_mock()
+
+    req = DummyReq("/bar", method="POST")
+    assert wrapped.get(req) == "GET-OK"
+    recorder.record_call.assert_called_with("/bar", "test_fn", "POST")
+
+    recorder.reset_mock()
+
+    assert wrapped.open(path="/baz", method="PUT") == "OPEN-OK"
+    recorder.record_call.assert_called_with("/baz", "test_fn", "PUT")
+
+
+def test_create_coverage_fixture_returns_existing_client_when_coverage_disabled():
+    """create_coverage_fixture yields existing fixture when coverage disabled."""
+    fixture = create_coverage_fixture("my_client", existing_fixture_name="existing")
+
+    class SimpleSession:
+        def __init__(self):
+            self.config = Mock()
+            self.config.getoption.return_value = False
+
+    session = SimpleSession()
+
+    class Req:
+        def __init__(self):
+            self.node = Mock()
+            self.node.session = session
+
+        def getfixturevalue(self, name):
+            if name == "existing":
+                return "I-AM-EXISTING-CLIENT"
+            raise pytest.FixtureLookupError(name)
+
+    req = Req()
+    raw_fixture = getattr(fixture, "__wrapped__", fixture)
+    gen = raw_fixture(req)
+    got = next(gen)
+    assert got == "I-AM-EXISTING-CLIENT"
+    with pytest.raises(StopIteration):
+        next(gen)
+
+
+@patch("pytest_api_cov.frameworks.get_framework_adapter")
+def test_create_coverage_fixture_falls_back_to_app_when_no_existing_and_coverage_disabled(mock_get_adapter):
+    """When no existing client but an app fixture exists and coverage disabled, create tracked client."""
+    fixture = create_coverage_fixture("my_client", existing_fixture_name=None)
+
+    class SimpleSession:
+        def __init__(self):
+            self.config = Mock()
+            self.config.getoption.return_value = False
+
+    session = SimpleSession()
+
+    class Req:
+        def __init__(self):
+            self.node = Mock()
+            self.node.session = session
+
+        def getfixturevalue(self, name):
+            if name == "app":
+                return "APP-OBJ"
+            raise pytest.FixtureLookupError(name)
+
+    adapter = Mock()
+    adapter.get_tracked_client.return_value = "CLIENT-FROM-APP"
+    mock_get_adapter.return_value = adapter
+
+    req = Req()
+    # Unwrap pytest.fixture wrapper to call the inner generator directly
+    raw_fixture = getattr(fixture, "__wrapped__", fixture)
+    gen = raw_fixture(req)
+    got = next(gen)
+    assert got == "CLIENT-FROM-APP"
+    mock_get_adapter.assert_called_once_with("APP-OBJ")
+    with pytest.raises(StopIteration):
+        next(gen)
