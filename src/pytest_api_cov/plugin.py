@@ -246,7 +246,10 @@ def wrap_client_with_coverage(client: Any, recorder: Any, test_name: str) -> Any
                 first = args[0]
                 if isinstance(first, str):
                     path = first.partition("?")[0]
-                    method = name.upper()
+                    method = kwargs.get("method", name).upper()
+                    if method == "OPEN":
+                        method = "GET"
+
                     return path, method
 
                 # For starlette/requests TestClient, args[0] may be a Request or PreparedRequest
@@ -259,19 +262,21 @@ def wrap_client_with_coverage(client: Any, recorder: Any, test_name: str) -> Any
                     else:
                         return path, method
 
-            # Try kwargs-based FlaskClient open signature
             if kwargs:
                 path_kw = kwargs.get("path") or kwargs.get("url") or kwargs.get("uri")
                 if isinstance(path_kw, str):
                     path = path_kw.partition("?")[0]
                     method = kwargs.get("method", name).upper()
+                    if method == "OPEN":
+                        method = "GET"
+
                     return path, method
 
             return None
 
         def __getattr__(self, name: str) -> Any:
             attr = getattr(self._wrapped, name)
-            if name in ["get", "post", "put", "delete", "patch", "head", "options"]:
+            if name in {"get", "post", "put", "delete", "patch", "head", "options"}:
 
                 def tracked_method(*args: Any, **kwargs: Any) -> Any:
                     response = attr(*args, **kwargs)
