@@ -189,7 +189,28 @@ Default client fixture names the plugin will look for (in order):
 
 If you use a different fixture name, you can provide one or more names via the CLI flag `--api-cov-client-fixture-names` (repeatable) or in `pyproject.toml` under `[tool.pytest_api_cov]` as `client_fixture_names` (a list).
 
-#### Option 1: Helper Function
+
+#### Option 1: Configuration-Based (recommended for most users)
+
+Configure one or more existing fixture names to be discovered and wrapped automatically by the plugin.
+
+Example `pyproject.toml`:
+
+```toml
+[tool.pytest_api_cov]
+# Provide a list of candidate fixture names the plugin should try (order matters)
+client_fixture_names = ["my_custom_client"]
+```
+
+Or use the CLI flag multiple times:
+
+```bash
+pytest --api-cov-report --api-cov-client-fixture-names=my_custom_client --api-cov-client-fixture-names=another_fixture
+```
+
+If the configured fixture(s) are not found, the plugin will try to use an `app` fixture (if present) to create a tracked client. If neither is available or the plugin cannot extract the app from a discovered client fixture, the tests will still run — coverage will simply be unavailable and a warning will be logged.
+
+#### Option 2: Helper Function
 
 Use the `create_coverage_fixture` helper to create a custom fixture name:
 
@@ -221,25 +242,6 @@ def test_with_flask_client(flask_client):
 
 The helper returns a pytest fixture you can assign to a name in `conftest.py`.
 
-#### Option 2: Configuration-Based (recommended for most users)
-
-Configure one or more existing fixture names to be discovered and wrapped automatically by the plugin.
-
-Example `pyproject.toml`:
-
-```toml
-[tool.pytest_api_cov]
-# Provide a list of candidate fixture names the plugin should try (order matters)
-client_fixture_names = ["my_custom_client"]
-```
-
-Or use the CLI flag multiple times:
-
-```bash
-pytest --api-cov-report --api-cov-client-fixture-names=my_custom_client --api-cov-client-fixture-names=another_fixture
-```
-
-If the configured fixture(s) are not found, the plugin will try to use an `app` fixture (if present) to create a tracked client. If neither is available or the plugin cannot extract the app from a discovered client fixture, the tests will still run — coverage will simply be unavailable and a warning will be logged.
 
 ### Configuration Options
 
@@ -258,12 +260,14 @@ show_excluded_endpoints = false
 # Exclude endpoints from coverage using wildcard patterns with negation support
 # Use * for wildcard matching, all other characters are matched literally
 # Use ! at the start to negate a pattern (include what would otherwise be excluded)
+# Optionally prefix a pattern with one or more HTTP methods to target only those methods,
 exclusion_patterns = [
     "/health",
     "/metrics",
     "/docs/*",
     "/admin/*",
     "!/admin/public",
+    "GET,POST /users/*"
 ]
 
 # Save detailed JSON report
@@ -281,6 +285,39 @@ client_fixture_names = ["my_custom_client"]
 # Group HTTP methods by endpoint for legacy behavior (default: false)
 group_methods_by_endpoint = false
 
+```
+Notes on exclusion patterns
+
+- Method prefixes (optional): If a pattern starts with one or more HTTP method names followed by whitespace, the pattern applies only to those methods. Methods may be comma-separated and are matched case-insensitively. Example: `GET,POST /users/*`.
+- Path-only patterns (default): If no method is specified the pattern applies to all methods for the matching path (existing behaviour).
+- Wildcards: Use `*` to match any characters in the path portion (not a regex; dots and other characters are treated literally unless `*` is used).
+- Negation: Prefix a pattern with `!` to override earlier exclusions and re-include a path (or method-specific path). Negations can also include method prefixes (e.g. `!GET /admin/health`).
+- Matching: Patterns are tested against both the full `METHOD /path` string and the `/path` portion to remain compatible with existing configurations.
+
+Examples (pyproject or CLI):
+
+- Exclude the `/health` path for all methods:
+
+```toml
+exclusion_patterns = ["/health"]
+```
+
+- Exclude only GET requests to `/health`:
+
+```toml
+exclusion_patterns = ["GET /health"]
+```
+
+- Exclude GET and POST for `/users/*` but re-include GET /users/42:
+
+```toml
+exclusion_patterns = ["GET,POST /users/*", "!GET /users/42"]
+```
+
+Or using the CLI flags (repeatable):
+
+```bash
+pytest --api-cov-report --api-cov-exclusion-patterns="GET,POST /users/*" --api-cov-exclusion-patterns="!GET /users/42"
 ```
 
 ### Command Line Options
