@@ -159,6 +159,39 @@ class TestEndpointCategorization:
         assert set(uncovered) == {"/api/v2/users", "/api/v2/admin", "/docs"}
         assert set(excluded_out) == {"/api/v1/admin", "/metrics"}
 
+    def test_categorise_with_method_specific_exclusion(self):
+        """Exclude a specific HTTP method for an endpoint using 'METHOD /path' patterns."""
+        discovered = ["GET /items", "POST /items", "GET /health"]
+        called = {"POST /items"}
+        patterns = ["GET /items"]  # Exclude only GET /items
+
+        covered, uncovered, excluded_out = categorise_endpoints(discovered, called, patterns)
+        assert set(covered) == {"POST /items"}
+        assert set(uncovered) == {"GET /health"}
+        assert set(excluded_out) == {"GET /items"}
+
+    def test_categorise_with_multiple_method_prefixes(self):
+        """Support comma-separated method prefixes to exclude multiple methods for a path."""
+        discovered = ["GET /users/1", "POST /users/1", "PUT /users/1"]
+        called = {"PUT /users/1"}
+        patterns = ["GET,POST /users/*"]  # Exclude GET and POST for users
+
+        covered, uncovered, excluded_out = categorise_endpoints(discovered, called, patterns)
+        assert set(covered) == {"PUT /users/1"}
+        assert set(uncovered) == set()
+        assert set(excluded_out) == {"GET /users/1", "POST /users/1"}
+
+    def test_categorise_method_prefixed_negation(self):
+        """Negation with a method prefix should re-include only that method."""
+        discovered = ["GET /users/alice", "POST /users/alice", "GET /users/bob"]
+        called = {"GET /users/bob"}
+        patterns = ["/users/*", "!GET /users/bob"]  # Exclude all users but re-include GET /users/bob
+
+        covered, uncovered, excluded_out = categorise_endpoints(discovered, called, patterns)
+        assert set(covered) == {"GET /users/bob"}
+        assert set(uncovered) == set()
+        assert set(excluded_out) == {"GET /users/alice", "POST /users/alice"}
+
 
 class TestCoverageCalculationAndReporting:
     """Tests for coverage computation and report generation."""

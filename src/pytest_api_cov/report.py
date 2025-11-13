@@ -4,7 +4,7 @@ import json
 import re
 from pathlib import Path
 from re import Pattern
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from rich.console import Console
 
@@ -30,11 +30,14 @@ def categorise_endpoints(
 ) -> Tuple[List[str], List[str], List[str]]:
     """Categorise endpoints into covered, uncovered, and excluded.
 
-    Exclusion patterns support simple wildcard matching with negation:
+    Exclusion patterns support simple wildcard matching with negation and optional
+    HTTP method prefixes:
     - Use * for wildcard (matches any characters)
     - Use ! at the start to negate a pattern (include what would otherwise be excluded)
+    - Optionally prefix a pattern with one or more HTTP methods to target only those methods,
+      e.g. "GET /health" or "GET,POST /users/*" (methods are case-insensitive)
     - All other characters are matched literally
-    - Examples: "/admin/*", "/health", "!users/bob" (negates exclusion)
+    - Examples: "/admin/*", "/health", "!users/bob", "GET /health", "GET,POST /users/*"
     - Pattern order matters: exclusions are applied first, then negations override them
     """
     covered, uncovered, excluded = [], [], []
@@ -47,39 +50,63 @@ def categorise_endpoints(
         exclusion_only = [p for p in exclusion_patterns if not p.startswith("!")]
         negation_only = [p[1:] for p in exclusion_patterns if p.startswith("!")]  # Remove the '!' prefix
 
-        compiled_exclusions = (
-            [re.compile("^" + re.escape(pattern).replace(r"\*", ".*") + "$") for pattern in exclusion_only]
-            if exclusion_only
-            else None
-        )
-        compiled_negations = (
-            [re.compile("^" + re.escape(pattern).replace(r"\*", ".*") + "$") for pattern in negation_only]
-            if negation_only
-            else None
-        )
+        def compile_patterns(patterns: List[str]) -> List[Tuple[Optional[Set[str]], Pattern[str]]]:
+            compiled: List[Tuple[Optional[Set[str]], Pattern[str]]] = []
+            for pat in patterns:
+                path_pattern = pat.strip()
+                methods: Optional[Set[str]] = None
+                # Detect method prefix
+                m = re.match(r"^([A-Za-z,]+)\s+(.+)$", pat)
+                if m:
+                    methods = {mname.strip().upper() for mname in m.group(1).split(",") if mname.strip()}
+                    path_pattern = m.group(2)
+                # Build regex from the path part
+                regex = re.compile("^" + re.escape(path_pattern).replace(r"\*", ".*") + "$")
+                compiled.append((methods, regex))
+            return compiled
+
+        compiled_exclusions = compile_patterns(exclusion_only) if exclusion_only else None
+        compiled_negations = compile_patterns(negation_only) if negation_only else None
 
     for endpoint in endpoints:
         # Check exclusion patterns against both full "METHOD /path" and just "/path"
         is_excluded = False
-        if compiled_exclusions:
-            # Extract path from "METHOD /path" format for pattern matching
-            if " " in endpoint:
-                _, path_only = endpoint.split(" ", 1)
-                is_excluded = any(p.match(endpoint) for p in compiled_exclusions) or any(
-                    p.match(path_only) for p in compiled_exclusions
-                )
-            else:
-                is_excluded = any(p.match(endpoint) for p in compiled_exclusions)
+        endpoint_method = None
+        path_only = endpoint
+        if " " in endpoint:
+            endpoint_method, path_only = endpoint.split(" ", 1)
+            endpoint_method = endpoint_method.upper()
 
-        # Check negation patterns - these override exclusions
+        if compiled_exclusions:
+            for methods_set, regex in compiled_exclusions:
+                if methods_set:
+                    if not endpoint_method:
+                        continue
+                    if endpoint_method not in methods_set:
+                        continue
+                    if regex.match(path_only) or regex.match(endpoint):
+                        is_excluded = True
+                        break
+                # No methods specified
+                elif regex.match(path_only) or regex.match(endpoint):
+                    is_excluded = True
+                    break
+
+        # Negation patterns
         if is_excluded and compiled_negations:
-            if " " in endpoint:
-                _, path_only = endpoint.split(" ", 1)
-                is_negated = any(p.match(endpoint) for p in compiled_negations) or any(
-                    p.match(path_only) for p in compiled_negations
-                )
-            else:
-                is_negated = any(p.match(endpoint) for p in compiled_negations)
+            is_negated = False
+            for methods_set, regex in compiled_negations:
+                if methods_set:
+                    if not endpoint_method:
+                        continue
+                    if endpoint_method not in methods_set:
+                        continue
+                    if regex.match(path_only) or regex.match(endpoint):
+                        is_negated = True
+                        break
+                elif regex.match(path_only) or regex.match(endpoint):
+                    is_negated = True
+                    break
 
             if is_negated:
                 is_excluded = False  # Negation overrides exclusion
