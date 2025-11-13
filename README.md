@@ -189,7 +189,28 @@ Default client fixture names the plugin will look for (in order):
 
 If you use a different fixture name, you can provide one or more names via the CLI flag `--api-cov-client-fixture-names` (repeatable) or in `pyproject.toml` under `[tool.pytest_api_cov]` as `client_fixture_names` (a list).
 
-#### Option 1: Helper Function
+
+#### Option 1: Configuration-Based (recommended for most users)
+
+Configure one or more existing fixture names to be discovered and wrapped automatically by the plugin.
+
+Example `pyproject.toml`:
+
+```toml
+[tool.pytest_api_cov]
+# Provide a list of candidate fixture names the plugin should try (order matters)
+client_fixture_names = ["my_custom_client"]
+```
+
+Or use the CLI flag multiple times:
+
+```bash
+pytest --api-cov-report --api-cov-client-fixture-names=my_custom_client --api-cov-client-fixture-names=another_fixture
+```
+
+If the configured fixture(s) are not found, the plugin will try to use an `app` fixture (if present) to create a tracked client. If neither is available or the plugin cannot extract the app from a discovered client fixture, the tests will still run — coverage will simply be unavailable and a warning will be logged.
+
+#### Option 2: Helper Function
 
 Use the `create_coverage_fixture` helper to create a custom fixture name:
 
@@ -221,25 +242,6 @@ def test_with_flask_client(flask_client):
 
 The helper returns a pytest fixture you can assign to a name in `conftest.py`.
 
-#### Option 2: Configuration-Based (recommended for most users)
-
-Configure one or more existing fixture names to be discovered and wrapped automatically by the plugin.
-
-Example `pyproject.toml`:
-
-```toml
-[tool.pytest_api_cov]
-# Provide a list of candidate fixture names the plugin should try (order matters)
-client_fixture_names = ["my_custom_client"]
-```
-
-Or use the CLI flag multiple times:
-
-```bash
-pytest --api-cov-report --api-cov-client-fixture-names=my_custom_client --api-cov-client-fixture-names=another_fixture
-```
-
-If the configured fixture(s) are not found, the plugin will try to use an `app` fixture (if present) to create a tracked client. If neither is available or the plugin cannot extract the app from a discovered client fixture, the tests will still run — coverage will simply be unavailable and a warning will be logged.
 
 ### Configuration Options
 
