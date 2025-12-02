@@ -25,6 +25,7 @@ class ApiCoverageReportConfig(BaseModel):
         ["client", "test_client", "api_client", "app_client"], alias="api-cov-client-fixture-names"
     )
     group_methods_by_endpoint: bool = Field(default=False, alias="api-cov-group-methods-by-endpoint")
+    openapi_spec: Optional[str] = Field(None, alias="api-cov-openapi-spec")
 
 
 def read_toml_config() -> Dict[str, Any]:
@@ -50,6 +51,7 @@ def read_session_config(session_config: Any) -> Dict[str, Any]:
         "api-cov-force-sugar-disabled": "force_sugar_disabled",
         "api-cov-client-fixture-names": "client_fixture_names",
         "api-cov-group-methods-by-endpoint": "group_methods_by_endpoint",
+        "api-cov-openapi-spec": "openapi_spec",
     }
     config = {}
     for opt, key in cli_options.items():

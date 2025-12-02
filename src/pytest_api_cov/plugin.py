@@ -5,12 +5,51 @@ from typing import Any, Optional, Tuple
 
 import pytest
 
-from .config import get_pytest_api_cov_report_config
+from .config import ApiCoverageReportConfig, get_pytest_api_cov_report_config
 from .models import SessionData
+from .openapi import parse_openapi_spec
 from .pytest_flags import add_pytest_api_cov_flags
 from .report import generate_pytest_api_cov_report
 
 logger = logging.getLogger(__name__)
+
+
+def _discover_openapi_endpoints(config: ApiCoverageReportConfig, coverage_data: SessionData) -> None:
+    """Discover endpoints from OpenAPI spec if configured."""
+    if not config.openapi_spec or coverage_data.discovered_endpoints.endpoints:
+        return
+
+    endpoints = parse_openapi_spec(config.openapi_spec)
+    if not endpoints:
+        logger.warning(f"> No endpoints found in OpenAPI spec: {config.openapi_spec}")
+        return
+
+    for endpoint_method in endpoints:
+        method, path = endpoint_method.split(" ", 1)
+        coverage_data.add_discovered_endpoint(path, method, "openapi_spec")
+
+    logger.info(f"> Discovered {len(endpoints)} endpoints from OpenAPI spec: {config.openapi_spec}")
+
+
+def _discover_app_endpoints(app: Any, coverage_data: SessionData, fixture_name: str) -> None:
+    """Discover endpoints from the app instance."""
+    if not (app and is_supported_framework(app) and not coverage_data.discovered_endpoints.endpoints):
+        return
+
+    try:
+        from .frameworks import get_framework_adapter
+
+        adapter = get_framework_adapter(app)
+        endpoints = adapter.get_endpoints()
+        framework_name = type(app).__name__
+
+        for endpoint_method in endpoints:
+            method, path = endpoint_method.split(" ", 1)
+            coverage_data.add_discovered_endpoint(path, method, f"{framework_name.lower()}_adapter")
+
+        logger.info(f"> Discovered {len(endpoints)} endpoints for '{fixture_name}'")
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"> Failed to discover endpoints from app: {e}")
 
 
 def is_supported_framework(app: Any) -> bool:
@@ -158,13 +197,17 @@ def create_coverage_fixture(fixture_name: str, existing_fixture_name: Optional[s
                 return
 
         # At this point coverage is enabled and coverage_data exists
+        config = get_pytest_api_cov_report_config(request.config)
+
+        # Check for OpenAPI spec first
+        _discover_openapi_endpoints(config, coverage_data)
+
         if existing_client is None:
             # Try to find a client fixture by common names
-            config = get_pytest_api_cov_report_config(request.config)
             for name in config.client_fixture_names:
                 try:
                     existing_client = request.getfixturevalue(name)
-                    logger.info(f"> Found client fixture '{name}' while creating '{fixture_name}'")
+                    logger.info(f"> Found client fixture '{name}' for '{fixture_name}'")
                     break
                 except pytest.FixtureLookupError:
                     continue
@@ -174,29 +217,13 @@ def create_coverage_fixture(fixture_name: str, existing_fixture_name: Optional[s
             app = extract_app_from_client(existing_client)
 
         if app is None:
-            # Try to get an app fixture
             try:
                 app = request.getfixturevalue("app")
-                logger.debug("> Found 'app' fixture while creating coverage fixture")
             except pytest.FixtureLookupError:
                 app = None
 
-        if app and is_supported_framework(app):
-            try:
-                from .frameworks import get_framework_adapter
-
-                adapter = get_framework_adapter(app)
-                if not coverage_data.discovered_endpoints.endpoints:
-                    endpoints = adapter.get_endpoints()
-                    framework_name = type(app).__name__
-                    for endpoint_method in endpoints:
-                        method, path = endpoint_method.split(" ", 1)
-                        coverage_data.add_discovered_endpoint(path, method, f"{framework_name.lower()}_adapter")
-                    logger.info(
-                        f"> pytest-api-coverage: Discovered {len(endpoints)} endpoints when creating '{fixture_name}'."
-                    )
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"> pytest-api-coverage: Could not discover endpoints from app. Error: {e}")
+        # Discover endpoints from app if not already discovered
+        _discover_app_endpoints(app, coverage_data, fixture_name)
 
         # If we have an existing client, wrap it; otherwise try to create a tracked client from app
         if existing_client is not None:
@@ -319,6 +346,19 @@ def coverage_client(request: pytest.FixtureRequest) -> Any:
     coverage_data = getattr(session, "api_coverage_data", None)
     if coverage_data is None:
         pytest.skip("API coverage data not initialized. This should not happen.")
+
+    # Check for OpenAPI spec first
+    if config.openapi_spec and not coverage_data.discovered_endpoints.endpoints:
+        endpoints = parse_openapi_spec(config.openapi_spec)
+        if endpoints:
+            for endpoint_method in endpoints:
+                method, path = endpoint_method.split(" ", 1)
+                coverage_data.add_discovered_endpoint(path, method, "openapi_spec")
+            logger.info(
+                f"> pytest-api-coverage: Discovered {len(endpoints)} endpoints from OpenAPI spec: {config.openapi_spec}"
+            )
+        else:
+            logger.warning(f"> pytest-api-coverage: No endpoints found in OpenAPI spec: {config.openapi_spec}")
 
     client = None
     for fixture_name in config.client_fixture_names:

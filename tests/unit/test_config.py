@@ -214,3 +214,29 @@ class TestConfigMerging:
 
         config = read_session_config(mock_session_config)
         assert "fail_under" not in config
+
+    def test_read_session_config_with_openapi_spec(self):
+        """Test read_session_config with openapi_spec."""
+        mock_session_config = Mock()
+        mock_session_config.getoption.side_effect = lambda name: {
+            "--api-cov-openapi-spec": "openapi.json",
+        }.get(name)
+
+        config = read_session_config(mock_session_config)
+        assert config["openapi_spec"] == "openapi.json"
+
+    def test_read_toml_config_with_openapi_spec(self, tmp_path):
+        """Verify reading openapi_spec from pyproject.toml."""
+        pyproject_content = """
+            [tool.pytest_api_cov]
+            openapi_spec = "openapi.yaml"
+        """
+        (tmp_path / "pyproject.toml").write_text(pyproject_content)
+
+        original_cwd = Path.cwd()
+        os.chdir(tmp_path)
+        try:
+            config = read_toml_config()
+            assert config["openapi_spec"] == "openapi.yaml"
+        finally:
+            os.chdir(original_cwd)
