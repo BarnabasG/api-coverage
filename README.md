@@ -19,10 +19,9 @@ pip install pytest-api-cov
 
 ### Basic Usage
 
-For most projects, no configuration is needed:
+For most projects, no configuration is needed, just add the flag to your pytest command:
 
 ```bash
-# Just add the flag to your pytest command
 pytest --api-cov-report
 ```
 
@@ -32,9 +31,10 @@ Discovery in this plugin is client-based: the plugin extracts the application in
 
 How discovery works (in order):
 
-1. If you configure one or more candidate client fixture names (see configuration below), the plugin will try each in order and wrap the first matching fixture it finds.
-2. If no configured client fixture is found, the plugin will look for a standard `app` fixture and use that to create a tracked client.
-3. If neither a client fixture nor an `app` fixture is available (or the plugin cannot extract an app from the client), coverage tracking will be skipped and a helpful message is shown.
+1. **OpenAPI Spec**: If an OpenAPI spec file is configured (via CLI or config), endpoints are discovered directly from the spec. This takes precedence over app-based discovery.
+2. **Client Fixtures**: If no spec is provided, the plugin looks for configured client fixtures and extracts the app from them.
+3. **App Fixture**: If no client fixture is found, the plugin looks for a standard `app` fixture.
+4. **Skip**: If none of the above are found, coverage tracking is skipped.
 
 ### Example
 
@@ -117,6 +117,29 @@ pytest-api-cov show-pyproject
 # Print an example conftest.py for a known app module
 pytest-api-cov show-conftest FastAPI src.main app
 ```
+
+## OpenAPI Specification Support
+
+You can use an OpenAPI specification file (JSON or YAML) as the source of truth for API endpoints. This is useful if your app structure makes automatic discovery difficult, or if you want to ensure coverage against a defined contract.
+
+### Usage
+
+```bash
+# Use an OpenAPI spec file
+pytest --api-cov-report --api-cov-openapi-spec=openapi.yaml
+```
+
+Or in `pyproject.toml`:
+
+```toml
+[tool.pytest_api_cov]
+openapi_spec = "openapi.json"
+```
+
+When an OpenAPI spec is provided:
+- Endpoints are loaded from the spec file.
+- App-based discovery is skipped (unless the spec yields no endpoints).
+- Coverage is calculated against the endpoints defined in the spec.
 
 ## HTTP Method-Aware Coverage
 
@@ -355,11 +378,14 @@ pytest --api-cov-report -vv
 
 # Group HTTP methods by endpoint (legacy behavior)
 pytest --api-cov-report --api-cov-group-methods-by-endpoint
+
+# Use OpenAPI spec for discovery
+pytest --api-cov-report --api-cov-openapi-spec=openapi.yaml
 ```
 
 ## Framework Support
 
-Works automatically with FastAPI and Flask applications.
+Works automatically with FastAPI, Flask, and Flask-OpenAPI3 applications.
 
 ### FastAPI
 
@@ -492,7 +518,7 @@ If you still see no endpoints discovered:
 The plugin supports:
 - **FastAPI**: Detected by `FastAPI` class
 - **Flask**: Detected by `Flask` class
-- **FlaskOpenAPI3**: Detected by `FlaskOpenAPI3` class
+- **FlaskOpenAPI3**: Detected by `OpenAPI` class (from `flask_openapi3` module)
 
 Other frameworks are not currently supported.
 

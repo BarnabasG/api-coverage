@@ -489,3 +489,55 @@ def test_create_coverage_fixture_falls_back_to_app_when_no_existing_and_coverage
     mock_get_adapter.assert_called_once_with("APP-OBJ")
     with pytest.raises(StopIteration):
         next(gen)
+
+
+@patch("pytest_api_cov.plugin.get_pytest_api_cov_report_config")
+@patch("pytest_api_cov.plugin.parse_openapi_spec")
+def test_create_coverage_fixture_with_openapi_spec(mock_parse_spec, mock_get_config):
+    """Test that endpoints are discovered from OpenAPI spec if configured."""
+    fixture = create_coverage_fixture("my_client")
+
+    # Mock config to have openapi_spec
+    mock_config = Mock()
+    mock_config.openapi_spec = "openapi.json"
+    mock_config.client_fixture_names = ["client"]
+    mock_get_config.return_value = mock_config
+
+    # Mock parse_openapi_spec
+    mock_parse_spec.return_value = ["GET /users", "POST /users"]
+
+    # Mock session and coverage data
+    coverage_data = SessionData()
+
+    class SimpleSession:
+        def __init__(self):
+            self.config = Mock()
+            self.config.getoption.return_value = True  # coverage enabled
+            self.api_coverage_data = coverage_data
+
+    session = SimpleSession()
+
+    class Req:
+        def __init__(self):
+            self.node = Mock()
+            self.node.session = session
+            self.node.name = "test_node"
+            self.config = session.config
+
+        def getfixturevalue(self, name):
+            if name == "client":
+                return Mock()
+            raise pytest.FixtureLookupError(name)
+
+    req = Req()
+
+    # Execute fixture
+    raw_fixture = getattr(fixture, "__wrapped__", fixture)
+    gen = raw_fixture(req)
+    client = next(gen)
+
+    # Verify
+    mock_parse_spec.assert_called_once_with("openapi.json")
+    assert "GET /users" in coverage_data.discovered_endpoints.endpoints
+    assert "POST /users" in coverage_data.discovered_endpoints.endpoints
+    assert coverage_data.discovered_endpoints.discovery_source == "openapi_spec"

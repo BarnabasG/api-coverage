@@ -1,6 +1,6 @@
 [project]
 name = "pytest-api-cov"
-version = "1.2.2"
+version = "1.2.3"
 description = "Pytest Plugin to provide API Coverage statistics for Python Web Frameworks"
 readme = "README.md"
 authors = [{ name = "Barnaby Gill", email = "barnabasgill@gmail.com" }]
@@ -16,6 +16,7 @@ dependencies = [
     "starlette>=0.14.0",
     "tomli>=1.2.0",
     "pytest>=6.0.0",
+    "PyYAML>=6.0",
 ]
 
 [project.urls]
@@ -31,6 +32,7 @@ dev = [
     "ruff>=0.12.3",
     "typeguard>=4.4.4",
     "vulture>=2.14",
+    "types-PyYAML>=6.0",
 ]
 
 # API COVERAGE

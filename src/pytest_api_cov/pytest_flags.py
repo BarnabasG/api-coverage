@@ -74,3 +74,10 @@ def add_pytest_api_cov_flags(parser: pytest.Parser) -> None:
         default=False,
         help="Group HTTP methods by endpoint for legacy behavior (default: method-aware coverage)",
     )
+    parser.addoption(
+        "--api-cov-openapi-spec",
+        action="store",
+        type=str,
+        default=None,
+        help="Path to OpenAPI spec file (JSON or YAML) to use as source of truth for endpoints.",
+    )
