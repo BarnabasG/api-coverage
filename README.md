@@ -1,10 +1,10 @@
 # pytest-api-cov
 
-A **pytest plugin** that measures **API endpoint coverage** for FastAPI and Flask applications. Know which endpoints are tested and which are missing coverage.
+A **pytest plugin** that measures **API endpoint coverage** for FastAPI, Flask, and Django applications. Know which endpoints are tested and which are missing coverage.
 
 ## Features
 
-- **Zero Configuration**: Plug-and-play with Flask/FastAPI apps - just install and run
+- **Zero Configuration**: Plug-and-play with Flask/FastAPI/Django apps - just install and run
 - **Client-Based Discovery**: Automatically extracts app from your existing test client fixtures
 - **Terminal Reports**: Rich terminal output with detailed coverage information
 - **JSON Reports**: Export coverage data for CI/CD integration
@@ -385,7 +385,7 @@ pytest --api-cov-report --api-cov-openapi-spec=openapi.yaml
 
 ## Framework Support
 
-Works automatically with FastAPI, Flask, and Flask-OpenAPI3 applications.
+Works automatically with FastAPI, Flask, Flask-OpenAPI3, and Django applications.
 
 ### FastAPI
 
@@ -418,6 +418,15 @@ def get_user(user_id):
 # Tests automatically get a 'coverage_client' fixture  
 def test_get_user(coverage_client):
     response = coverage_client.get("/users/123")
+    assert response.status_code == 200
+```
+
+### Django
+
+```python
+# Tests automatically get a 'coverage_client' fixture that wraps django.test.Client
+def test_root_endpoint(coverage_client):
+    response = coverage_client.get("/")
     assert response.status_code == 200
 ```
 
@@ -519,6 +528,7 @@ The plugin supports:
 - **FastAPI**: Detected by `FastAPI` class
 - **Flask**: Detected by `Flask` class
 - **FlaskOpenAPI3**: Detected by `OpenAPI` class (from `flask_openapi3` module)
+- **Django**: Detected by `django` module presence or `WSGIHandler` class
 
 Other frameworks are not currently supported.
 

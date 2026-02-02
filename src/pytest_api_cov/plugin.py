@@ -64,6 +64,8 @@ def is_supported_framework(app: Any) -> bool:
         (module_name == "flask" and app_type == "Flask")
         or (module_name == "flask_openapi3" and app_type == "OpenAPI")
         or (module_name == "fastapi" and app_type == "FastAPI")
+        or (module_name == "django.core.handlers.wsgi" and app_type == "WSGIHandler")
+        or (module_name == "django" or "django" in module_name)
     )
 
 
@@ -84,11 +86,10 @@ def extract_app_from_client(client: Any) -> Optional[Any]:
     if hasattr(client, "_transport") and hasattr(client._transport, "app"):
         return client._transport.app
 
-    # Flask's test client may expose the application via "application" or "app"
     if hasattr(client, "_app"):
         return client._app
 
-    return None
+    return getattr(client, "handler", None)
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -110,12 +111,12 @@ def pytest_configure(config: pytest.Config) -> None:
 
         logger.setLevel(log_level)
 
-        if not logger.handlers:
-            handler = logging.StreamHandler()
-            handler.setLevel(log_level)
-            formatter = logging.Formatter("%(message)s")
-            handler.setFormatter(formatter)
-            logger.addHandler(handler)
+        # if not logger.handlers:
+        #     handler = logging.StreamHandler()
+        #     handler.setLevel(log_level)
+        #     formatter = logging.Formatter("%(message)s")
+        #     handler.setFormatter(formatter)
+        #     logger.addHandler(handler)
 
         logger.info("Initializing API coverage plugin...")
 
@@ -367,7 +368,7 @@ def coverage_client(request: pytest.FixtureRequest) -> Any:
             logger.info(f"> Found custom fixture '{fixture_name}', wrapping with coverage tracking")
             break
         except pytest.FixtureLookupError:
-            logger.debug(f"> Custom fixture '{fixture_name}' not found, trying next one")
+            logger.debug(f"> Custom fixture '{fixture_name}' not found")
             continue
 
     if client is None:
@@ -399,7 +400,7 @@ def coverage_client(request: pytest.FixtureRequest) -> Any:
 
     if not is_supported_framework(app):
         logger.warning(
-            f"> Unsupported framework: {type(app).__name__}. pytest-api-coverage supports Flask and FastAPI."
+            f"> Unsupported framework: {type(app).__name__}. pytest-api-coverage supports Flask, FastAPI, and Django."
         )
         return client
 

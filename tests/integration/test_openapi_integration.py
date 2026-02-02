@@ -35,10 +35,18 @@ def test_openapi_discovery(pytester):
     """)
 
     # Run pytest with the flag
-    result = pytester.runpytest("--api-cov-report", "--api-cov-openapi-spec=openapi.json", "-vv")
+    result = pytester.runpytest(
+        "--api-cov-report",
+        "--api-cov-openapi-spec=openapi.json",
+        "-vv",
+        "-o",
+        "log_cli=true",
+        "-o",
+        "log_cli_level=INFO",
+    )
 
     # Check that endpoints were discovered
-    result.stderr.fnmatch_lines(
+    result.stdout.fnmatch_lines(
         [
             "*Discovered 3 endpoints from OpenAPI spec*",
         ]

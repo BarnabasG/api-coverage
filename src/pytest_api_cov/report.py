@@ -142,7 +142,7 @@ def print_endpoints(
             else:
                 # Handle legacy format without method
                 formatted_endpoint = endpoint
-            console.print(f"  {symbol} [{style}]{formatted_endpoint}[/]")
+            console.print(f"  {symbol}\t[{style}]{formatted_endpoint}[/]")
 
 
 def compute_coverage(covered_count: int, uncovered_count: int) -> float:

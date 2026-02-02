@@ -40,11 +40,18 @@ class TestSupportedFramework:
         mock_app.__class__.__module__ = "fastapi.applications"
         assert is_supported_framework(mock_app) is True
 
-    def test_is_supported_framework_unsupported(self):
-        """Test framework detection with unsupported framework."""
+    def test_is_supported_framework_django(self):
+        """Test framework detection with Django app."""
         mock_app = Mock()
         mock_app.__class__.__name__ = "Django"
         mock_app.__class__.__module__ = "django.core"
+        assert is_supported_framework(mock_app) is True
+
+    def test_is_supported_framework_unsupported(self):
+        """Test framework detection with unsupported framework."""
+        mock_app = Mock()
+        mock_app.__class__.__name__ = "Bottle"
+        mock_app.__class__.__module__ = "bottle"
         assert is_supported_framework(mock_app) is False
 
 

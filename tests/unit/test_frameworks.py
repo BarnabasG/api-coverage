@@ -192,12 +192,22 @@ class TestAdapterFactory:
         mock_fastapi_app.__class__.__module__ = "fastapi.applications"
         mock_fastapi_app.__class__.__name__ = "FastAPI"
 
+        mock_django_app = Mock()
+        mock_django_app.__class__.__module__ = "django.core.handlers.wsgi"
+        mock_django_app.__class__.__name__ = "WSGIHandler"
+
         mock_unsupported_app = Mock()
-        mock_unsupported_app.__class__.__module__ = "django.core.handlers.wsgi"
-        mock_unsupported_app.__class__.__name__ = "WSGIHandler"
+        mock_unsupported_app.__class__.__module__ = "bottle"
+        mock_unsupported_app.__class__.__name__ = "Bottle"
 
         assert isinstance(get_framework_adapter(mock_flask_app), FlaskAdapter)
         assert isinstance(get_framework_adapter(mock_fastapi_app), FastAPIAdapter)
+
+        # Django is now supported
+        from pytest_api_cov.frameworks import DjangoAdapter
+
+        assert isinstance(get_framework_adapter(mock_django_app), DjangoAdapter)
+
         with pytest.raises(TypeError, match="Unsupported application type"):
             get_framework_adapter(mock_unsupported_app)
 

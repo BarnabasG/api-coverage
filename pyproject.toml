@@ -33,6 +33,7 @@ dev = [
     "typeguard>=4.4.4",
     "vulture>=2.14",
     "types-PyYAML>=6.0",
+    "django>=4.0.0",
 ]
 
 # API COVERAGE
