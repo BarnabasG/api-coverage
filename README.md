@@ -359,7 +359,7 @@ pytest --api-cov-report --api-cov-show-covered-endpoints
 pytest --api-cov-report --api-cov-show-excluded-endpoints
 
 # Hide uncovered endpoints
-pytest --api-cov-report --api-cov-show-uncovered-endpoints=false
+pytest --api-cov-report --api-cov-hide-uncovered-endpoints
 
 # Save JSON report
 pytest --api-cov-report --api-cov-report-path=api_coverage.json

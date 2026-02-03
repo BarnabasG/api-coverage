@@ -58,6 +58,11 @@ def read_session_config(session_config: Any) -> Dict[str, Any]:
         value = session_config.getoption(f"--{opt}")
         if value is not None and value != [] and value is not False:
             config[key] = value
+
+    # Validating negation flags
+    if session_config.getoption("--api-cov-hide-uncovered-endpoints"):
+        config["show_uncovered_endpoints"] = False
+
     return config
 
 
