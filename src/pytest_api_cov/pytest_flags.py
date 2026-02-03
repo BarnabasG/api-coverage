@@ -21,8 +21,14 @@ def add_pytest_api_cov_flags(parser: pytest.Parser) -> None:
     parser.addoption(
         "--api-cov-show-uncovered-endpoints",
         action="store_true",
-        default=True,
-        help="Show uncovered endpoints in the console report.",
+        default=False,
+        help="Show uncovered endpoints in the console report (default: True).",
+    )
+    parser.addoption(
+        "--api-cov-hide-uncovered-endpoints",
+        action="store_true",
+        default=False,
+        help="Hide uncovered endpoints in the console report.",
     )
     parser.addoption(
         "--api-cov-show-covered-endpoints",
