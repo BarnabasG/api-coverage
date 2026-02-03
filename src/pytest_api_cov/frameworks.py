@@ -98,6 +98,57 @@ class FastAPIAdapter(BaseAdapter):
         return TrackingFastAPIClient(self.app)
 
 
+class DjangoAdapter(BaseAdapter):
+    """Adapter for Django applications."""
+
+    def get_endpoints(self) -> List[str]:
+        """Return list of 'METHOD /path' strings."""
+        from django.urls import get_resolver  # type: ignore[import-untyped]
+        from django.urls.resolvers import URLPattern, URLResolver  # type: ignore[import-untyped]
+
+        endpoints: List[str] = []
+
+        def _extract_patterns(patterns: List[Any], prefix: str = "") -> None:
+            for pattern in patterns:
+                if isinstance(pattern, URLPattern):
+                    route = str(pattern.pattern).strip("^$")
+                    full_path = f"/{prefix}{route}".replace("//", "/")
+
+                    view = pattern.callback
+                    methods = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
+
+                    if hasattr(view, "view_class") and hasattr(view.view_class, "http_method_names"):
+                        methods = {m.upper() for m in view.view_class.http_method_names}
+
+                    endpoints.extend(f"{method} {full_path}" for method in methods if method not in ("HEAD", "OPTIONS"))
+
+                elif isinstance(pattern, URLResolver):
+                    route = str(pattern.pattern).strip("^$")
+                    _extract_patterns(pattern.url_patterns, f"{prefix}{route}")
+
+        _extract_patterns(get_resolver().url_patterns)
+        return sorted(endpoints)
+
+    def get_tracked_client(self, recorder: Optional["ApiCallRecorder"], test_name: str) -> Any:
+        """Return a patched test client that records calls."""
+        from django.test import Client  # type: ignore[import-untyped]
+
+        if recorder is None:
+            return Client()
+
+        class TrackingDjangoClient(Client):  # type: ignore[misc]
+            def request(self, **request: Any) -> Any:
+                method = request.get("REQUEST_METHOD", "GET").upper()
+                path = request.get("PATH_INFO", "/")
+
+                if recorder is not None:
+                    recorder.record_call(path, test_name, method)
+
+                return super().request(**request)
+
+        return TrackingDjangoClient()
+
+
 def get_framework_adapter(app: Any) -> BaseAdapter:
     """Detect the framework and return the appropriate adapter."""
     app_type = type(app).__name__
@@ -108,4 +159,15 @@ def get_framework_adapter(app: Any) -> BaseAdapter:
     if module_name == "fastapi" and app_type == "FastAPI":
         return FastAPIAdapter(app)
 
-    raise TypeError(f"Unsupported application type: {app_type}. pytest-api-coverage supports Flask and FastAPI.")
+    # Django detection
+    # Django apps are often WSGIHandlers or just the module 'django' is present
+    if module_name == "django" or "django" in module_name:
+        return DjangoAdapter(app)
+
+    # Check for Django WSGI handler specifically
+    if app_type == "WSGIHandler" and module_name == "django.core.handlers.wsgi":
+        return DjangoAdapter(app)
+
+    raise TypeError(
+        f"Unsupported application type: {app_type}. pytest-api-coverage supports Flask, FastAPI, and Django."
+    )

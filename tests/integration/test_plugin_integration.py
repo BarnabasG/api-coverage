@@ -45,9 +45,9 @@ def test_plugin_end_to_end(pytester):
     assert "FAIL: Required coverage of 90.0% not met" in output
     assert "Actual coverage: 50.0%" in output
     assert "Covered Endpoints" in output
-    assert "[.] GET" in output
+    assert "[.]   GET" in output
     assert "Uncovered Endpoints" in output
-    assert "[X] GET" in output
+    assert "[X]   GET" in output
 
 
 def test_plugin_disabled_by_default(pytester):
@@ -108,9 +108,9 @@ def test_custom_fixture_wrapping_flask(pytester):
     assert "API Coverage Report" in output
     assert "Total API Coverage: 50.0%" in output
     assert "Covered Endpoints" in output
-    assert "[.] GET" in output
+    assert "[.]   GET" in output
     assert "Uncovered Endpoints" in output
-    assert "[X] GET" in output
+    assert "[X]   GET" in output
 
 
 def test_custom_fixture_wrapping_fastapi(pytester):
@@ -159,9 +159,9 @@ def test_custom_fixture_wrapping_fastapi(pytester):
     assert "API Coverage Report" in output
     assert "Total API Coverage: 50.0%" in output
     assert "Covered Endpoints" in output
-    assert "[.] GET" in output
+    assert "[.]   GET" in output
     assert "Uncovered Endpoints" in output
-    assert "[X] GET" in output
+    assert "[X]   GET" in output
 
 
 def test_custom_fixture_fallback_when_not_found(pytester):
@@ -243,9 +243,9 @@ def test_custom_app_location_via_fixture(pytester):
     assert "API Coverage Report" in output
     assert "Total API Coverage: 50.0%" in output
     assert "Covered Endpoints" in output
-    assert "[.] GET" in output
+    assert "[.]   GET" in output
     assert "Uncovered Endpoints" in output
-    assert "[X] GET" in output
+    assert "[X]   GET" in output
 
 
 def test_multiple_auto_discover_files_uses_first(pytester):
@@ -426,11 +426,11 @@ def test_exclusion_patterns_with_negation(pytester):
     assert "API Coverage Report" in output
 
     assert "GET    /users/bob" in output
-    assert "[.] GET    /users/bob" in output
+    assert "[.]   GET    /users/bob" in output
 
     assert "GET    /users/alice" in output
     assert "GET    /users/charlie" in output
-    assert "[-] GET    /users/alice" in output
-    assert "[-] GET    /users/charlie" in output
+    assert "[-]   GET    /users/alice" in output
+    assert "[-]   GET    /users/charlie" in output
 
     assert "Total API Coverage:" in output
