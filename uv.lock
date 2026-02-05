@@ -687,29 +687,42 @@ wheels = [
 
 [[package]]
 name = "pytest-api-cov"
-version = "1.3.2"
+version = "1.3.3"
 source = { editable = "." }
 dependencies = [
-    { name = "fastapi" },
-    { name = "flask" },
-    { name = "httpx" },
     { name = "pydantic" },
     { name = "pytest" },
     { name = "pyyaml" },
     { name = "rich" },
-    { name = "starlette" },
     { name = "tomli" },
+]
+
+[package.optional-dependencies]
+django = [
+    { name = "django" },
+]
+fastapi = [
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "starlette" },
+]
+flask = [
+    { name = "flask" },
 ]
 
 [package.dev-dependencies]
 dev = [
     { name = "django" },
+    { name = "fastapi" },
+    { name = "flask" },
+    { name = "httpx" },
     { name = "mypy" },
     { name = "path" },
     { name = "pytest-cov" },
     { name = "pytest-sugar" },
     { name = "pytest-xdist" },
     { name = "ruff" },
+    { name = "starlette" },
     { name = "typeguard" },
     { name = "types-pyyaml" },
     { name = "vulture" },
@@ -717,26 +730,32 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "fastapi", specifier = ">=0.68.0" },
-    { name = "flask", specifier = ">=2.0.0" },
-    { name = "httpx", specifier = ">=0.20.0" },
+    { name = "django", marker = "extra == 'django'", specifier = ">=4.0.0" },
+    { name = "fastapi", marker = "extra == 'fastapi'", specifier = ">=0.68.0" },
+    { name = "flask", marker = "extra == 'flask'", specifier = ">=2.0.0" },
+    { name = "httpx", marker = "extra == 'fastapi'", specifier = ">=0.20.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pytest", specifier = ">=6.0.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rich", specifier = ">=10.0.0" },
-    { name = "starlette", specifier = ">=0.14.0" },
+    { name = "starlette", marker = "extra == 'fastapi'", specifier = ">=0.14.0" },
     { name = "tomli", specifier = ">=1.2.0" },
 ]
+provides-extras = ["django", "fastapi", "flask"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "django", specifier = ">=4.0.0" },
+    { name = "fastapi", specifier = ">=0.68.0" },
+    { name = "flask", specifier = ">=2.0.0" },
+    { name = "httpx", specifier = ">=0.20.0" },
     { name = "mypy", specifier = ">=1.17.0" },
     { name = "path", specifier = ">=16.0.0" },
     { name = "pytest-cov", specifier = ">=6.2.1" },
     { name = "pytest-sugar", specifier = ">=1.0.0" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
     { name = "ruff", specifier = ">=0.12.3" },
+    { name = "starlette", specifier = ">=0.14.0" },
     { name = "typeguard", specifier = ">=4.4.4" },
     { name = "types-pyyaml", specifier = ">=6.0" },
     { name = "vulture", specifier = ">=2.14" },
