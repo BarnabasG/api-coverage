@@ -1,5 +1,8 @@
 # pytest-api-cov
 
+![GitHub Release](https://img.shields.io/github/v/release/BarnabasG/api-coverage) [![PyPI Downloads](https://static.pepy.tech/personalized-badge/pytest-api-cov?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/pytest-api-cov) ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/BarnabasG/api-coverage/ci.yml)
+
+
 A **pytest plugin** that measures **API endpoint coverage** for FastAPI, Flask, and Django applications. Know which endpoints are tested and which are missing coverage.
 
 ## Features
