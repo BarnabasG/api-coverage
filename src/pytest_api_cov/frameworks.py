@@ -67,17 +67,33 @@ class FastAPIAdapter(BaseAdapter):
 
     def get_endpoints(self) -> List[str]:
         """Return list of 'METHOD /path' strings."""
-        from fastapi.routing import APIRoute
-
-        endpoints = [
-            f"{method} {route.path}"
-            for route in self.app.routes
-            if isinstance(route, APIRoute)
-            for method in route.methods
-            if method not in ("HEAD", "OPTIONS")
-        ]
-
+        endpoints: List[str] = []
+        self._collect_routes(self.app.routes, "", endpoints)
         return sorted(endpoints)
+
+    def _collect_routes(self, routes: List[Any], prefix: str, endpoints: List[str]) -> None:
+        """Recursively collect endpoints from routes, including mounted sub-apps."""
+        from fastapi.routing import APIRoute
+        from starlette.routing import Mount
+
+        for route in routes:
+            if isinstance(route, APIRoute):
+                endpoints.extend(
+                    f"{method} {prefix}{route.path}" for method in route.methods if method not in ("HEAD", "OPTIONS")
+                )
+            elif isinstance(route, Mount):
+                mount_prefix = prefix + route.path
+                # Sub-app with its own routes (FastAPI/Starlette router)
+                if hasattr(route, "routes") and route.routes:
+                    self._collect_routes(route.routes, mount_prefix, endpoints)
+                # WSGI middleware wrapping a supported framework
+                elif hasattr(route, "app"):
+                    inner = _unwrap_wsgi_app(route.app)
+                    if inner is not None:
+                        sub_endpoints = get_framework_adapter(inner).get_endpoints()
+                        for ep in sub_endpoints:
+                            method, path = ep.split(" ", 1)
+                            endpoints.append(f"{method} {mount_prefix}{path}")
 
     def get_tracked_client(self, recorder: Optional["ApiCallRecorder"], test_name: str) -> Any:
         """Return a patched test client that records calls."""
@@ -147,6 +163,18 @@ class DjangoAdapter(BaseAdapter):
                 return super().request(**request)
 
         return TrackingDjangoClient()
+
+
+def _unwrap_wsgi_app(app: Any) -> Any:
+    """Extract the inner WSGI app from middleware wrappers, if supported."""
+    from .plugin import is_supported_framework
+
+    type_name = type(app).__name__
+    if type_name in ("WSGIMiddleware", "WSGIResponder"):
+        inner = getattr(app, "app", None)
+        if inner is not None and is_supported_framework(inner):
+            return inner
+    return None
 
 
 def get_framework_adapter(app: Any) -> BaseAdapter:
