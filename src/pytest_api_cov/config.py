@@ -1,8 +1,10 @@
 """Configuration handling for the API coverage report."""
 
+from __future__ import annotations
+
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import tomli
 from pydantic import BaseModel, ConfigDict, Field
@@ -13,22 +15,22 @@ class ApiCoverageReportConfig(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    fail_under: Optional[float] = Field(None, alias="api-cov-fail-under")
+    fail_under: float | None = Field(None, alias="api-cov-fail-under")
     show_uncovered_endpoints: bool = Field(default=True, alias="api-cov-show-uncovered-endpoints")
     show_covered_endpoints: bool = Field(default=False, alias="api-cov-show-covered-endpoints")
     show_excluded_endpoints: bool = Field(default=False, alias="api-cov-show-excluded-endpoints")
-    exclusion_patterns: List[str] = Field(default=[], alias="api-cov-exclusion-patterns")
-    report_path: Optional[str] = Field(None, alias="api-cov-report-path")
+    exclusion_patterns: list[str] = Field(default=[], alias="api-cov-exclusion-patterns")
+    report_path: str | None = Field(None, alias="api-cov-report-path")
     force_sugar: bool = Field(default=False, alias="api-cov-force-sugar")
     force_sugar_disabled: bool = Field(default=False, alias="api-cov-force-sugar-disabled")
-    client_fixture_names: List[str] = Field(
+    client_fixture_names: list[str] = Field(
         ["client", "test_client", "api_client", "app_client"], alias="api-cov-client-fixture-names"
     )
     group_methods_by_endpoint: bool = Field(default=False, alias="api-cov-group-methods-by-endpoint")
-    openapi_spec: Optional[str] = Field(None, alias="api-cov-openapi-spec")
+    openapi_spec: str | None = Field(None, alias="api-cov-openapi-spec")
 
 
-def read_toml_config() -> Dict[str, Any]:
+def read_toml_config() -> dict[str, Any]:
     """Read the [tool.pytest_api_cov] section from pyproject.toml."""
     try:
         with Path("pyproject.toml").open("rb") as f:
@@ -38,28 +40,31 @@ def read_toml_config() -> Dict[str, Any]:
         return {}
 
 
-def read_session_config(session_config: Any) -> Dict[str, Any]:
+_CLI_OPTIONS = {
+    "api-cov-fail-under": "fail_under",
+    "api-cov-show-uncovered-endpoints": "show_uncovered_endpoints",
+    "api-cov-show-covered-endpoints": "show_covered_endpoints",
+    "api-cov-show-excluded-endpoints": "show_excluded_endpoints",
+    "api-cov-exclusion-patterns": "exclusion_patterns",
+    "api-cov-report-path": "report_path",
+    "api-cov-force-sugar": "force_sugar",
+    "api-cov-force-sugar-disabled": "force_sugar_disabled",
+    "api-cov-client-fixture-names": "client_fixture_names",
+    "api-cov-group-methods-by-endpoint": "group_methods_by_endpoint",
+    "api-cov-openapi-spec": "openapi_spec",
+}
+
+_UNSET = (None, [], False)
+
+
+def read_session_config(session_config: Any) -> dict[str, Any]:
     """Read configuration from pytest session config (command-line flags)."""
-    cli_options = {
-        "api-cov-fail-under": "fail_under",
-        "api-cov-show-uncovered-endpoints": "show_uncovered_endpoints",
-        "api-cov-show-covered-endpoints": "show_covered_endpoints",
-        "api-cov-show-excluded-endpoints": "show_excluded_endpoints",
-        "api-cov-exclusion-patterns": "exclusion_patterns",
-        "api-cov-report-path": "report_path",
-        "api-cov-force-sugar": "force_sugar",
-        "api-cov-force-sugar-disabled": "force_sugar_disabled",
-        "api-cov-client-fixture-names": "client_fixture_names",
-        "api-cov-group-methods-by-endpoint": "group_methods_by_endpoint",
-        "api-cov-openapi-spec": "openapi_spec",
-    }
-    config = {}
-    for opt, key in cli_options.items():
+    config: dict[str, Any] = {}
+    for opt, key in _CLI_OPTIONS.items():
         value = session_config.getoption(f"--{opt}")
-        if value is not None and value != [] and value is not False:
+        if value not in _UNSET:
             config[key] = value
 
-    # Validating negation flags
     if session_config.getoption("--api-cov-hide-uncovered-endpoints"):
         config["show_uncovered_endpoints"] = False
 
@@ -67,17 +72,14 @@ def read_session_config(session_config: Any) -> Dict[str, Any]:
 
 
 def supports_unicode() -> bool:
-    """Check if the environment supports Unicode characters."""
+    """Check if the terminal supports Unicode output."""
     if not sys.stdout.isatty():
         return False
-    return bool(sys.stdout) and sys.stdout.encoding.lower() in ["utf-8", "utf8"]
+    return sys.stdout.encoding.lower() in ("utf-8", "utf8")
 
 
 def get_pytest_api_cov_report_config(session_config: Any) -> ApiCoverageReportConfig:
-    """Get the final API coverage configuration by merging sources.
-
-    Priority: CLI > pyproject.toml > Defaults.
-    """
+    """Build final config by merging sources. Priority: CLI > pyproject.toml > defaults."""
     toml_config = read_toml_config()
     cli_config = read_session_config(session_config)
 

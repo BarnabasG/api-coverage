@@ -1,10 +1,12 @@
 """API coverage report generation."""
 
+from __future__ import annotations
+
 import json
 import re
 from pathlib import Path
 from re import Pattern
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 from rich.console import Console
 
@@ -19,48 +21,41 @@ def endpoint_to_regex(endpoint: str) -> Pattern[str]:
 
 
 def contains_escape_characters(endpoint: str) -> bool:
-    """Escape special characters in the endpoint string."""
+    """Check whether an endpoint contains dynamic path segments."""
     return ("<" in endpoint and ">" in endpoint) or ("{" in endpoint and "}" in endpoint)
 
 
 def categorise_endpoints(
-    endpoints: List[str],
-    called_data: Dict[str, Set[str]],
-    exclusion_patterns: List[str],
-) -> Tuple[List[str], List[str], List[str]]:
+    endpoints: list[str],
+    called_data: dict[str, set[str]],
+    exclusion_patterns: list[str],
+) -> tuple[list[str], list[str], list[str]]:
     """Categorise endpoints into covered, uncovered, and excluded.
 
-    Exclusion patterns support simple wildcard matching with negation and optional
-    HTTP method prefixes:
-    - Use * for wildcard (matches any characters)
-    - Use ! at the start to negate a pattern (include what would otherwise be excluded)
-    - Optionally prefix a pattern with one or more HTTP methods to target only those methods,
-      e.g. "GET /health" or "GET,POST /users/*" (methods are case-insensitive)
-    - All other characters are matched literally
-    - Examples: "/admin/*", "/health", "!users/bob", "GET /health", "GET,POST /users/*"
-    - Pattern order matters: exclusions are applied first, then negations override them
+    Exclusion patterns support wildcard matching with negation and optional
+    HTTP method prefixes. Pattern order matters: exclusions first, then
+    negations override them.
     """
-    covered, uncovered, excluded = [], [], []
+    covered: list[str] = []
+    uncovered: list[str] = []
+    excluded: list[str] = []
 
     if not exclusion_patterns:
         compiled_exclusions = None
         compiled_negations = None
     else:
-        # Separate exclusion and negation patterns
         exclusion_only = [p for p in exclusion_patterns if not p.startswith("!")]
-        negation_only = [p[1:] for p in exclusion_patterns if p.startswith("!")]  # Remove the '!' prefix
+        negation_only = [p[1:] for p in exclusion_patterns if p.startswith("!")]
 
-        def compile_patterns(patterns: List[str]) -> List[Tuple[Optional[Set[str]], Pattern[str]]]:
-            compiled: List[Tuple[Optional[Set[str]], Pattern[str]]] = []
+        def compile_patterns(patterns: list[str]) -> list[tuple[set[str] | None, Pattern[str]]]:
+            compiled: list[tuple[set[str] | None, Pattern[str]]] = []
             for pat in patterns:
                 path_pattern = pat.strip()
-                methods: Optional[Set[str]] = None
-                # Detect method prefix
+                methods: set[str] | None = None
                 m = re.match(r"^([A-Za-z,]+)\s+(.+)$", pat)
                 if m:
                     methods = {mname.strip().upper() for mname in m.group(1).split(",") if mname.strip()}
                     path_pattern = m.group(2)
-                # Build regex from the path part
                 regex = re.compile("^" + re.escape(path_pattern).replace(r"\*", ".*") + "$")
                 compiled.append((methods, regex))
             return compiled
@@ -69,7 +64,6 @@ def categorise_endpoints(
         compiled_negations = compile_patterns(negation_only) if negation_only else None
 
     for endpoint in endpoints:
-        # Check exclusion patterns against both full "METHOD /path" and just "/path"
         is_excluded = False
         endpoint_method = None
         path_only = endpoint
@@ -80,36 +74,26 @@ def categorise_endpoints(
         if compiled_exclusions:
             for methods_set, regex in compiled_exclusions:
                 if methods_set:
-                    if not endpoint_method:
-                        continue
-                    if endpoint_method not in methods_set:
+                    if not endpoint_method or endpoint_method not in methods_set:
                         continue
                     if regex.match(path_only) or regex.match(endpoint):
                         is_excluded = True
                         break
-                # No methods specified
                 elif regex.match(path_only) or regex.match(endpoint):
                     is_excluded = True
                     break
 
-        # Negation patterns
         if is_excluded and compiled_negations:
-            is_negated = False
             for methods_set, regex in compiled_negations:
                 if methods_set:
-                    if not endpoint_method:
-                        continue
-                    if endpoint_method not in methods_set:
+                    if not endpoint_method or endpoint_method not in methods_set:
                         continue
                     if regex.match(path_only) or regex.match(endpoint):
-                        is_negated = True
+                        is_excluded = False
                         break
                 elif regex.match(path_only) or regex.match(endpoint):
-                    is_negated = True
+                    is_excluded = False
                     break
-
-            if is_negated:
-                is_excluded = False  # Negation overrides exclusion
 
         if is_excluded:
             excluded.append(endpoint)
@@ -126,21 +110,18 @@ def categorise_endpoints(
 def print_endpoints(
     console: Console,
     label: str,
-    endpoints: List[str],
+    endpoints: list[str],
     symbol: str,
     style: str,
 ) -> None:
-    """Print a list of endpoints to the console with a label and style."""
+    """Print a list of endpoints to the console."""
     if endpoints:
         console.print(f"[{style}]{label}[/]:")
         for endpoint in endpoints:
-            # Format endpoint with consistent spacing for HTTP methods
             if " " in endpoint:
                 method, path = endpoint.split(" ", 1)
-                # Pad method to 6 characters (longest common method is DELETE)
                 formatted_endpoint = f"{method:<6} {path}"
             else:
-                # Handle legacy format without method
                 formatted_endpoint = endpoint
             console.print(f"  {symbol}\t[{style}]{formatted_endpoint}[/]")
 
@@ -151,13 +132,13 @@ def compute_coverage(covered_count: int, uncovered_count: int) -> float:
     return round(100 * covered_count / total, 2) if total > 0 else 0.0
 
 
-def prepare_endpoint_detail(endpoints: List[str], called_data: Dict[str, Set[str]]) -> List[Dict[str, Any]]:
-    """Prepare endpoint details by mapping each endpoint to its callers."""
+def prepare_endpoint_detail(endpoints: list[str], called_data: dict[str, set[str]]) -> list[dict[str, Any]]:
+    """Map each endpoint to its callers for JSON report output."""
     details = []
     for endpoint in endpoints:
         if contains_escape_characters(endpoint):
             pattern = endpoint_to_regex(endpoint)
-            callers = set()
+            callers: set[str] = set()
             for call, call_set in called_data.items():
                 if pattern.match(call):
                     callers.update(call_set)
@@ -167,7 +148,7 @@ def prepare_endpoint_detail(endpoints: List[str], called_data: Dict[str, Set[str
     return sorted(details, key=lambda x: len(x["callers"]))
 
 
-def write_report_file(report_data: Dict[str, Any], report_path: str) -> None:
+def write_report_file(report_data: dict[str, Any], report_path: str) -> None:
     """Write the report data to a JSON file."""
     path = Path(report_path).resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -177,8 +158,8 @@ def write_report_file(report_data: Dict[str, Any], report_path: str) -> None:
 
 def generate_pytest_api_cov_report(
     api_cov_config: ApiCoverageReportConfig,
-    called_data: Dict[str, Set[str]],
-    discovered_endpoints: List[str],
+    called_data: dict[str, set[str]],
+    discovered_endpoints: list[str],
 ) -> int:
     """Generate and print the API coverage report, returning an exit status."""
     console = Console()

@@ -5,50 +5,50 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from pytest_api_cov.frameworks import is_supported_framework
 from pytest_api_cov.models import SessionData
 from pytest_api_cov.plugin import (
     DeferXdistPlugin,
-    is_supported_framework,
+    create_coverage_fixture,
+    extract_app_from_client,
     pytest_addoption,
     pytest_configure,
     pytest_sessionfinish,
     pytest_sessionstart,
-    extract_app_from_client,
     wrap_client_with_coverage,
-    create_coverage_fixture,
 )
 
 
 class TestSupportedFramework:
-    """Tests for framework detection utility functions."""
+    """Tests for framework detection."""
 
     def test_is_supported_framework_none(self):
-        """Test framework detection with None."""
+        """None is not a supported framework."""
         assert is_supported_framework(None) is False
 
     def test_is_supported_framework_flask(self):
-        """Test framework detection with Flask app."""
+        """Flask app is supported."""
         mock_app = Mock()
         mock_app.__class__.__name__ = "Flask"
         mock_app.__class__.__module__ = "flask.app"
         assert is_supported_framework(mock_app) is True
 
     def test_is_supported_framework_fastapi(self):
-        """Test framework detection with FastAPI app."""
+        """FastAPI app is supported."""
         mock_app = Mock()
         mock_app.__class__.__name__ = "FastAPI"
         mock_app.__class__.__module__ = "fastapi.applications"
         assert is_supported_framework(mock_app) is True
 
     def test_is_supported_framework_django(self):
-        """Test framework detection with Django app."""
+        """Django app is supported."""
         mock_app = Mock()
         mock_app.__class__.__name__ = "Django"
         mock_app.__class__.__module__ = "django.core"
         assert is_supported_framework(mock_app) is True
 
     def test_is_supported_framework_unsupported(self):
-        """Test framework detection with unsupported framework."""
+        """Unsupported framework returns False."""
         mock_app = Mock()
         mock_app.__class__.__name__ = "Bottle"
         mock_app.__class__.__module__ = "bottle"
@@ -59,7 +59,7 @@ class TestPluginHooks:
     """Tests for pytest plugin hooks."""
 
     def test_pytest_addoption(self):
-        """Test that pytest_addoption adds the required flags."""
+        """pytest_addoption registers flags."""
         mock_parser = Mock()
 
         pytest_addoption(mock_parser)
@@ -67,7 +67,7 @@ class TestPluginHooks:
         assert callable(pytest_addoption)
 
     def test_pytest_sessionstart_with_api_cov_report(self):
-        """Test pytest_sessionstart when --api-cov-report is enabled."""
+        """Session start creates coverage data when flag is set."""
         mock_session = Mock()
         mock_session.config.getoption.return_value = True
 
@@ -79,7 +79,7 @@ class TestPluginHooks:
         assert hasattr(mock_session.api_coverage_data, "discovered_endpoints")
 
     def test_pytest_sessionstart_without_api_cov_report(self):
-        """Test pytest_sessionstart when --api-cov-report is disabled."""
+        """Session start skips coverage data when flag is off."""
 
         class SimpleSession:
             def __init__(self):
@@ -95,7 +95,7 @@ class TestPluginHooks:
     @patch("pytest_api_cov.plugin.get_pytest_api_cov_report_config")
     @patch("pytest_api_cov.plugin.generate_pytest_api_cov_report")
     def test_pytest_sessionfinish_with_api_cov_report(self, mock_generate_report, mock_get_config):
-        """Test pytest_sessionfinish when --api-cov-report is enabled."""
+        """Session finish generates report when flag is set."""
         mock_session = Mock()
         mock_session.config.getoption.side_effect = lambda flag: flag == "--api-cov-report"
 
@@ -120,7 +120,7 @@ class TestPluginHooks:
         assert mock_session.exitstatus == 1
 
     def test_pytest_sessionfinish_without_api_cov_report(self):
-        """Test pytest_sessionfinish when --api-cov-report is disabled."""
+        """Session finish is a no-op when flag is off."""
 
         class SimpleSession:
             def __init__(self):
@@ -136,7 +136,7 @@ class TestPluginHooks:
     @patch("pytest_api_cov.config.get_pytest_api_cov_report_config")
     @patch("pytest_api_cov.report.generate_pytest_api_cov_report")
     def test_pytest_sessionfinish_with_workeroutput(self, mock_generate_report, mock_get_config):
-        """Test pytest_sessionfinish with workeroutput (parallel execution)."""
+        """Session finish serializes data for xdist workers."""
         mock_session = Mock()
         mock_session.config.getoption.return_value = True
 
@@ -161,7 +161,7 @@ class TestPluginHooks:
     @patch("pytest_api_cov.plugin.get_pytest_api_cov_report_config")
     @patch("pytest_api_cov.plugin.generate_pytest_api_cov_report")
     def test_pytest_sessionfinish_with_worker_data(self, mock_generate_report, mock_get_config):
-        """Test pytest_sessionfinish with worker data merging."""
+        """Session finish merges worker data on the master."""
         mock_session = Mock()
         mock_session.config.getoption.side_effect = lambda flag: flag == "--api-cov-report"
 
@@ -192,7 +192,7 @@ class TestPluginHooks:
     @patch("pytest_api_cov.plugin.get_pytest_api_cov_report_config")
     @patch("pytest_api_cov.plugin.generate_pytest_api_cov_report")
     def test_pytest_sessionfinish_with_non_dict_worker_data(self, mock_generate_report, mock_get_config):
-        """Test pytest_sessionfinish with non-dict worker data."""
+        """Session finish handles non-dict worker data gracefully."""
         mock_session = Mock()
         mock_session.config.getoption.side_effect = lambda flag: flag == "--api-cov-report"
 
@@ -201,8 +201,6 @@ class TestPluginHooks:
         coverage_data.discovered_endpoints.endpoints = ["/test"]
         mock_session.api_coverage_data = coverage_data
         mock_session.exitstatus = 0
-
-        from collections import defaultdict
 
         class NonDictWorkerData:
             def __init__(self):
@@ -245,22 +243,21 @@ class TestPluginHooks:
         mock_generate_report.assert_called_once()
 
     def test_pytest_configure_with_xdist(self):
-        """Test pytest_configure when pytest-xdist is available."""
+        """xdist plugin is registered when available."""
         mock_config = Mock()
-        mock_config.getoption.return_value = True  # --api-cov-report is enabled
-        mock_config.option.verbose = 1  # -v verbosity level
+        mock_config.getoption.return_value = True
+        mock_config.option.verbose = 1
         mock_config.pluginmanager.hasplugin.return_value = True
 
         pytest_configure(mock_config)
 
-        # DeferXdistPlugin
         mock_config.pluginmanager.register.assert_called_once()
 
     def test_pytest_configure_without_xdist(self):
-        """Test pytest_configure when pytest-xdist is not available."""
+        """No xdist registration when plugin is absent."""
         mock_config = Mock()
-        mock_config.getoption.return_value = True  # --api-cov-report is enabled
-        mock_config.option.verbose = 0  # no verbosity
+        mock_config.getoption.return_value = True
+        mock_config.option.verbose = 0
         mock_config.pluginmanager.hasplugin.return_value = False
 
         pytest_configure(mock_config)
@@ -268,9 +265,9 @@ class TestPluginHooks:
         mock_config.pluginmanager.register.assert_not_called()
 
     def test_pytest_configure_without_api_cov_report(self):
-        """Test pytest_configure when --api-cov-report is not enabled."""
+        """Logging is skipped when api-cov-report is off."""
         mock_config = Mock()
-        mock_config.getoption.return_value = False  # --api-cov-report is not enabled
+        mock_config.getoption.return_value = False
         mock_config.pluginmanager.hasplugin.return_value = True
 
         pytest_configure(mock_config)
@@ -280,19 +277,19 @@ class TestPluginHooks:
     @pytest.mark.parametrize(
         ("verbose_level", "expected_log_level"),
         [
-            (0, "WARNING"),  # normal run
-            (1, "INFO"),  # -v
-            (2, "DEBUG"),  # -vv or more
-            (3, "DEBUG"),  # -vvv
+            (0, "WARNING"),
+            (1, "INFO"),
+            (2, "DEBUG"),
+            (3, "DEBUG"),
         ],
     )
     @patch("pytest_api_cov.plugin.logger")
     def test_pytest_configure_logging_levels(self, mock_logger, verbose_level, expected_log_level):
-        """Test that logging levels are set correctly based on verbosity."""
+        """Log level matches verbosity flag."""
         import logging
 
         mock_config = Mock()
-        mock_config.getoption.return_value = True  # --api-cov-report enabled
+        mock_config.getoption.return_value = True
         mock_config.option.verbose = verbose_level
         mock_config.pluginmanager.hasplugin.return_value = False
         mock_logger.handlers = []
@@ -304,7 +301,7 @@ class TestPluginHooks:
 
     @patch("pytest_api_cov.plugin.logger")
     def test_pytest_configure_existing_handler(self, mock_logger):
-        """Test that no new handler is added if one already exists."""
+        """No duplicate handlers are added."""
         mock_config = Mock()
         mock_config.getoption.return_value = True
         mock_config.option.verbose = 1
@@ -317,10 +314,10 @@ class TestPluginHooks:
 
 
 class TestDeferXdistPlugin:
-    """Tests for the DeferXdistPlugin class."""
+    """Tests for the xdist deferred plugin."""
 
     def test_pytest_testnodedown_with_worker_data(self):
-        """Test pytest_testnodedown when worker data is available."""
+        """Worker data is merged on node down."""
         mock_node = Mock()
         mock_node.workeroutput = {"api_call_recorder": {"/test": ["test_func"]}}
 
@@ -334,7 +331,7 @@ class TestDeferXdistPlugin:
         assert "test_func" in worker_data["/test"]
 
     def test_pytest_testnodedown_without_worker_data(self):
-        """Test pytest_testnodedown when no worker data is available."""
+        """No-op when worker has no data."""
         mock_node = Mock()
         mock_node.workeroutput = {}
         mock_node.config.worker_api_call_recorder = {}
@@ -345,7 +342,7 @@ class TestDeferXdistPlugin:
         assert mock_node.config.worker_api_call_recorder == {}
 
     def test_pytest_testnodedown_with_existing_worker_data(self):
-        """Test pytest_testnodedown when worker data already exists."""
+        """New worker data is merged with existing data."""
         mock_node = Mock()
         mock_node.workeroutput = {"api_call_recorder": {"/new": ["new_test"]}}
 
@@ -432,7 +429,7 @@ def test_wrap_client_with_coverage_records_various_call_patterns():
 
 
 def test_create_coverage_fixture_returns_existing_client_when_coverage_disabled():
-    """create_coverage_fixture yields existing fixture when coverage disabled."""
+    """Existing fixture is yielded when coverage is disabled."""
     fixture = create_coverage_fixture("my_client", existing_fixture_name="existing")
 
     class SimpleSession:
@@ -461,9 +458,9 @@ def test_create_coverage_fixture_returns_existing_client_when_coverage_disabled(
         next(gen)
 
 
-@patch("pytest_api_cov.frameworks.get_framework_adapter")
+@patch("pytest_api_cov.plugin.get_framework_adapter")
 def test_create_coverage_fixture_falls_back_to_app_when_no_existing_and_coverage_disabled(mock_get_adapter):
-    """When no existing client but an app fixture exists and coverage disabled, create tracked client."""
+    """App fixture fallback when no existing client and coverage disabled."""
     fixture = create_coverage_fixture("my_client", existing_fixture_name=None)
 
     class SimpleSession:
@@ -488,7 +485,6 @@ def test_create_coverage_fixture_falls_back_to_app_when_no_existing_and_coverage
     mock_get_adapter.return_value = adapter
 
     req = Req()
-    # Unwrap pytest.fixture wrapper to call the inner generator directly
     raw_fixture = getattr(fixture, "__wrapped__", fixture)
     gen = raw_fixture(req)
     got = next(gen)
@@ -501,25 +497,22 @@ def test_create_coverage_fixture_falls_back_to_app_when_no_existing_and_coverage
 @patch("pytest_api_cov.plugin.get_pytest_api_cov_report_config")
 @patch("pytest_api_cov.plugin.parse_openapi_spec")
 def test_create_coverage_fixture_with_openapi_spec(mock_parse_spec, mock_get_config):
-    """Test that endpoints are discovered from OpenAPI spec if configured."""
+    """Endpoints are discovered from OpenAPI spec when configured."""
     fixture = create_coverage_fixture("my_client")
 
-    # Mock config to have openapi_spec
     mock_config = Mock()
     mock_config.openapi_spec = "openapi.json"
     mock_config.client_fixture_names = ["client"]
     mock_get_config.return_value = mock_config
 
-    # Mock parse_openapi_spec
     mock_parse_spec.return_value = ["GET /users", "POST /users"]
 
-    # Mock session and coverage data
     coverage_data = SessionData()
 
     class SimpleSession:
         def __init__(self):
             self.config = Mock()
-            self.config.getoption.return_value = True  # coverage enabled
+            self.config.getoption.return_value = True
             self.api_coverage_data = coverage_data
 
     session = SimpleSession()
@@ -538,12 +531,10 @@ def test_create_coverage_fixture_with_openapi_spec(mock_parse_spec, mock_get_con
 
     req = Req()
 
-    # Execute fixture
     raw_fixture = getattr(fixture, "__wrapped__", fixture)
     gen = raw_fixture(req)
     client = next(gen)
 
-    # Verify
     mock_parse_spec.assert_called_once_with("openapi.json")
     assert "GET /users" in coverage_data.discovered_endpoints.endpoints
     assert "POST /users" in coverage_data.discovered_endpoints.endpoints

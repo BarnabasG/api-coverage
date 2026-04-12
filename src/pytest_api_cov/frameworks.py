@@ -1,31 +1,33 @@
-"""Framework adapters for Flask and FastAPI."""
+"""Framework adapters for Flask, FastAPI, and Django."""
 
-from typing import TYPE_CHECKING, Any, List, Optional
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .models import ApiCallRecorder
 
 
-class BaseAdapter:
-    """Base adapter for framework applications."""
+class BaseAdapter(ABC):
+    """Abstract base for framework adapters."""
 
     def __init__(self, app: Any) -> None:
-        """Initialize the adapter."""
         self.app = app
 
-    def get_endpoints(self) -> List[str]:
-        """Return a list of all endpoint paths."""
-        raise NotImplementedError
+    @abstractmethod
+    def get_endpoints(self) -> list[str]:
+        """Return a list of 'METHOD /path' strings."""
 
-    def get_tracked_client(self, recorder: Optional["ApiCallRecorder"], test_name: str) -> Any:
-        """Return a patched test client that records calls."""
-        raise NotImplementedError
+    @abstractmethod
+    def get_tracked_client(self, recorder: ApiCallRecorder | None, test_name: str) -> Any:
+        """Return a test client that records calls."""
 
 
 class FlaskAdapter(BaseAdapter):
     """Adapter for Flask applications."""
 
-    def get_endpoints(self) -> List[str]:
+    def get_endpoints(self) -> list[str]:
         """Return list of 'METHOD /path' strings."""
         excluded_rules = ("/static/<path:filename>",)
         endpoints = [
@@ -38,8 +40,8 @@ class FlaskAdapter(BaseAdapter):
 
         return sorted(endpoints)
 
-    def get_tracked_client(self, recorder: Optional["ApiCallRecorder"], test_name: str) -> Any:
-        """Return a patched test client that records calls."""
+    def get_tracked_client(self, recorder: ApiCallRecorder | None, test_name: str) -> Any:
+        """Return a Flask test client with call tracking."""
         from flask.testing import FlaskClient
 
         if recorder is None:
@@ -65,13 +67,13 @@ class FlaskAdapter(BaseAdapter):
 class FastAPIAdapter(BaseAdapter):
     """Adapter for FastAPI applications."""
 
-    def get_endpoints(self) -> List[str]:
+    def get_endpoints(self) -> list[str]:
         """Return list of 'METHOD /path' strings."""
-        endpoints: List[str] = []
+        endpoints: list[str] = []
         self._collect_routes(self.app.routes, "", endpoints)
         return sorted(endpoints)
 
-    def _collect_routes(self, routes: List[Any], prefix: str, endpoints: List[str]) -> None:
+    def _collect_routes(self, routes: list[Any], prefix: str, endpoints: list[str]) -> None:
         """Recursively collect endpoints from routes, including mounted sub-apps."""
         from fastapi.routing import APIRoute
         from starlette.routing import Mount
@@ -83,10 +85,8 @@ class FastAPIAdapter(BaseAdapter):
                 )
             elif isinstance(route, Mount):
                 mount_prefix = prefix + route.path
-                # Sub-app with its own routes (FastAPI/Starlette router)
                 if hasattr(route, "routes") and route.routes:
                     self._collect_routes(route.routes, mount_prefix, endpoints)
-                # WSGI middleware wrapping a supported framework
                 elif hasattr(route, "app"):
                     inner = _unwrap_wsgi_app(route.app)
                     if inner is not None:
@@ -95,8 +95,8 @@ class FastAPIAdapter(BaseAdapter):
                             method, path = ep.split(" ", 1)
                             endpoints.append(f"{method} {mount_prefix}{path}")
 
-    def get_tracked_client(self, recorder: Optional["ApiCallRecorder"], test_name: str) -> Any:
-        """Return a patched test client that records calls."""
+    def get_tracked_client(self, recorder: ApiCallRecorder | None, test_name: str) -> Any:
+        """Return a FastAPI/Starlette test client with call tracking."""
         from starlette.testclient import TestClient
 
         if recorder is None:
@@ -117,14 +117,14 @@ class FastAPIAdapter(BaseAdapter):
 class DjangoAdapter(BaseAdapter):
     """Adapter for Django applications."""
 
-    def get_endpoints(self) -> List[str]:
+    def get_endpoints(self) -> list[str]:
         """Return list of 'METHOD /path' strings."""
         from django.urls import get_resolver  # type: ignore[import-untyped]
         from django.urls.resolvers import URLPattern, URLResolver  # type: ignore[import-untyped]
 
-        endpoints: List[str] = []
+        endpoints: list[str] = []
 
-        def _extract_patterns(patterns: List[Any], prefix: str = "") -> None:
+        def _extract_patterns(patterns: list[Any], prefix: str = "") -> None:
             for pattern in patterns:
                 if isinstance(pattern, URLPattern):
                     route = str(pattern.pattern).strip("^$")
@@ -145,8 +145,8 @@ class DjangoAdapter(BaseAdapter):
         _extract_patterns(get_resolver().url_patterns)
         return sorted(endpoints)
 
-    def get_tracked_client(self, recorder: Optional["ApiCallRecorder"], test_name: str) -> Any:
-        """Return a patched test client that records calls."""
+    def get_tracked_client(self, recorder: ApiCallRecorder | None, test_name: str) -> Any:
+        """Return a Django test client with call tracking."""
         from django.test import Client  # type: ignore[import-untyped]
 
         if recorder is None:
@@ -167,14 +167,23 @@ class DjangoAdapter(BaseAdapter):
 
 def _unwrap_wsgi_app(app: Any) -> Any:
     """Extract the inner WSGI app from middleware wrappers, if supported."""
-    from .plugin import is_supported_framework
-
     type_name = type(app).__name__
     if type_name in ("WSGIMiddleware", "WSGIResponder"):
         inner = getattr(app, "app", None)
         if inner is not None and is_supported_framework(inner):
             return inner
     return None
+
+
+def is_supported_framework(app: Any) -> bool:
+    """Check if the app is a supported framework."""
+    if app is None:
+        return False
+    try:
+        get_framework_adapter(app)
+    except TypeError:
+        return False
+    return True
 
 
 def get_framework_adapter(app: Any) -> BaseAdapter:
@@ -186,14 +195,7 @@ def get_framework_adapter(app: Any) -> BaseAdapter:
         return FlaskAdapter(app)
     if module_name == "fastapi" and app_type == "FastAPI":
         return FastAPIAdapter(app)
-
-    # Django detection
-    # Django apps are often WSGIHandlers or just the module 'django' is present
     if module_name == "django" or "django" in module_name:
-        return DjangoAdapter(app)
-
-    # Check for Django WSGI handler specifically
-    if app_type == "WSGIHandler" and module_name == "django.core.handlers.wsgi":
         return DjangoAdapter(app)
 
     raise TypeError(

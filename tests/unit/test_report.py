@@ -17,16 +17,16 @@ from pytest_api_cov.report import (
 
 
 class TestEndpointCategorization:
-    """Tests for endpoint classification logic."""
+    """Tests for endpoint categorisation logic."""
 
     def test_endpoint_to_regex_conversion(self):
-        """Verify regex creation for Flask and FastAPI style placeholders."""
+        """Regex creation for Flask and FastAPI style placeholders."""
         assert endpoint_to_regex("/users/<id>").pattern == "^/users/(.+)$"
         assert endpoint_to_regex("/items/{item_id}/data").pattern == "^/items/(.+)/data$"
         assert endpoint_to_regex("/static/path").pattern == "^/static/path$"
 
     def test_categorise_endpoints(self):
-        """Test the main categorization logic."""
+        """Standard categorisation with exclusions."""
         discovered = ["/users", "/users/{user_id}", "/health", "/admin/dashboard", "/a/b/c", "/a/b/d/c"]
         called = {"/users", "/users/123", "/admin/dashboard"}
         excluded = ["*admin*", "/a/*/c"]
@@ -38,7 +38,7 @@ class TestEndpointCategorization:
         assert set(excluded_out) == {"/admin/dashboard", "/a/b/c", "/a/b/d/c"}
 
     def test_categorise_with_no_exclusions(self):
-        """Ensure it works correctly with no exclusion patterns."""
+        """No exclusion patterns passes all endpoints through."""
         discovered = ["/a", "/b"]
         called = {"/a"}
         covered, uncovered, excluded = categorise_endpoints(discovered, called, [])
@@ -47,7 +47,7 @@ class TestEndpointCategorization:
         assert excluded == []
 
     def test_categorise_with_exclusion_patterns(self):
-        """Test categorization with exclusion patterns."""
+        """Exact exclusion pattern removes an endpoint."""
         discovered = ["/public", "/admin", "/internal"]
         called = {"/public", "/admin"}
         excluded = ["/admin"]
@@ -58,7 +58,7 @@ class TestEndpointCategorization:
         assert set(excluded_out) == {"/admin"}
 
     def test_categorise_with_wildcard_exclusions(self):
-        """Test categorization with wildcard exclusion patterns."""
+        """Wildcard exclusion pattern removes matching endpoints."""
         discovered = ["/public", "/admin/users", "/admin/settings", "/internal"]
         called = {"/public", "/admin/users"}
         excluded = ["/admin/*"]
@@ -69,7 +69,7 @@ class TestEndpointCategorization:
         assert set(excluded_out) == {"/admin/users", "/admin/settings"}
 
     def test_categorise_with_literal_dot_patterns(self):
-        """Test that dots in patterns are treated literally, not as regex wildcards."""
+        """Dots in patterns are treated literally, not as regex wildcards."""
         discovered = ["/api/v1.0/users", "/api/v1x0/users", "/api/v2.0/users"]
         called = set()
         excluded = ["/api/v1.0/*"]
@@ -80,62 +80,62 @@ class TestEndpointCategorization:
         assert set(excluded_out) == {"/api/v1.0/users"}
 
     def test_categorise_with_negation_patterns(self):
-        """Test categorization with negation patterns that override exclusions."""
+        """Negation pattern overrides an exclusion."""
         discovered = ["/users/alice", "/users/bob", "/users/charlie", "/admin/settings"]
         called = {"/users/alice", "/users/bob"}
-        patterns = ["/users/*", "!/users/bob"]  # Exclude all users except bob
+        patterns = ["/users/*", "!/users/bob"]
 
         covered, uncovered, excluded_out = categorise_endpoints(discovered, called, patterns)
-        assert set(covered) == {"/users/bob"}  # bob is negated from exclusion
+        assert set(covered) == {"/users/bob"}
         assert set(uncovered) == {"/admin/settings"}
-        assert set(excluded_out) == {"/users/alice", "/users/charlie"}  # alice and charlie are excluded
+        assert set(excluded_out) == {"/users/alice", "/users/charlie"}
 
     def test_categorise_with_multiple_negation_patterns(self):
-        """Test categorization with multiple negation patterns."""
+        """Multiple negation patterns re-include multiple endpoints."""
         discovered = ["/api/v1/users", "/api/v1/admin", "/api/v1/public", "/api/v2/users", "/health"]
         called = {"/api/v1/users", "/api/v1/public"}
-        patterns = ["/api/v1/*", "!/api/v1/users", "!/api/v1/public"]  # Exclude v1 except users and public
+        patterns = ["/api/v1/*", "!/api/v1/users", "!/api/v1/public"]
 
         covered, uncovered, excluded_out = categorise_endpoints(discovered, called, patterns)
-        assert set(covered) == {"/api/v1/users", "/api/v1/public"}  # negated from exclusion
+        assert set(covered) == {"/api/v1/users", "/api/v1/public"}
         assert set(uncovered) == {"/api/v2/users", "/health"}
-        assert set(excluded_out) == {"/api/v1/admin"}  # only admin is excluded
+        assert set(excluded_out) == {"/api/v1/admin"}
 
     def test_categorise_with_negation_wildcard_patterns(self):
-        """Test negation patterns with wildcards."""
+        """Negation with wildcards re-includes a subtree."""
         discovered = ["/admin/users/alice", "/admin/users/bob", "/admin/settings", "/public"]
         called = {"/admin/users/alice"}
-        patterns = ["/admin/*", "!/admin/users/*"]  # Exclude all admin except admin/users/*
+        patterns = ["/admin/*", "!/admin/users/*"]
 
         covered, uncovered, excluded_out = categorise_endpoints(discovered, called, patterns)
         assert set(covered) == {"/admin/users/alice"}
-        assert set(uncovered) == {"/admin/users/bob", "/public"}  # bob is uncovered but not excluded
-        assert set(excluded_out) == {"/admin/settings"}  # settings is excluded
+        assert set(uncovered) == {"/admin/users/bob", "/public"}
+        assert set(excluded_out) == {"/admin/settings"}
 
     def test_categorise_with_method_endpoint_negation(self):
-        """Test negation patterns work with METHOD /path format."""
+        """Negation works with METHOD /path format endpoints."""
         discovered = ["GET /users/alice", "POST /users/alice", "GET /users/bob", "GET /admin"]
         called = {"GET /users/alice", "GET /users/bob"}
-        patterns = ["/users/*", "!/users/bob"]  # Exclude all users except bob
+        patterns = ["/users/*", "!/users/bob"]
 
         covered, uncovered, excluded_out = categorise_endpoints(discovered, called, patterns)
-        assert set(covered) == {"GET /users/bob"}  # bob is negated from exclusion
+        assert set(covered) == {"GET /users/bob"}
         assert set(uncovered) == {"GET /admin"}
-        assert set(excluded_out) == {"GET /users/alice", "POST /users/alice"}  # alice endpoints excluded
+        assert set(excluded_out) == {"GET /users/alice", "POST /users/alice"}
 
     def test_categorise_negation_without_matching_exclusion(self):
-        """Test that negation patterns without matching exclusions don't affect anything."""
+        """Negation without a matching exclusion has no effect."""
         discovered = ["/users/alice", "/users/bob", "/admin"]
         called = {"/users/alice"}
-        patterns = ["!/users/charlie"]  # Negation for non-existent exclusion
+        patterns = ["!/users/charlie"]
 
         covered, uncovered, excluded_out = categorise_endpoints(discovered, called, patterns)
         assert set(covered) == {"/users/alice"}
         assert set(uncovered) == {"/users/bob", "/admin"}
-        assert set(excluded_out) == set()  # Nothing excluded
+        assert set(excluded_out) == set()
 
     def test_categorise_complex_exclusion_negation_scenario(self):
-        """Test complex scenario with multiple exclusions and negations."""
+        """Complex mix of exclusions and negations."""
         discovered = [
             "/api/v1/users",
             "/api/v1/admin",
@@ -148,10 +148,10 @@ class TestEndpointCategorization:
         ]
         called = {"/api/v1/users", "/api/v1/public", "/health"}
         patterns = [
-            "/api/v1/*",  # Exclude all v1 endpoints
-            "/metrics",  # Exclude metrics
-            "!/api/v1/users",  # But include v1/users
-            "!/api/v1/public",  # But include v1/public
+            "/api/v1/*",
+            "/metrics",
+            "!/api/v1/users",
+            "!/api/v1/public",
         ]
 
         covered, uncovered, excluded_out = categorise_endpoints(discovered, called, patterns)
@@ -160,10 +160,10 @@ class TestEndpointCategorization:
         assert set(excluded_out) == {"/api/v1/admin", "/metrics"}
 
     def test_categorise_with_method_specific_exclusion(self):
-        """Exclude a specific HTTP method for an endpoint using 'METHOD /path' patterns."""
+        """Exclude a specific HTTP method for an endpoint."""
         discovered = ["GET /items", "POST /items", "GET /health"]
         called = {"POST /items"}
-        patterns = ["GET /items"]  # Exclude only GET /items
+        patterns = ["GET /items"]
 
         covered, uncovered, excluded_out = categorise_endpoints(discovered, called, patterns)
         assert set(covered) == {"POST /items"}
@@ -171,10 +171,10 @@ class TestEndpointCategorization:
         assert set(excluded_out) == {"GET /items"}
 
     def test_categorise_with_multiple_method_prefixes(self):
-        """Support comma-separated method prefixes to exclude multiple methods for a path."""
+        """Comma-separated method prefixes exclude multiple methods."""
         discovered = ["GET /users/1", "POST /users/1", "PUT /users/1"]
         called = {"PUT /users/1"}
-        patterns = ["GET,POST /users/*"]  # Exclude GET and POST for users
+        patterns = ["GET,POST /users/*"]
 
         covered, uncovered, excluded_out = categorise_endpoints(discovered, called, patterns)
         assert set(covered) == {"PUT /users/1"}
@@ -182,10 +182,10 @@ class TestEndpointCategorization:
         assert set(excluded_out) == {"GET /users/1", "POST /users/1"}
 
     def test_categorise_method_prefixed_negation(self):
-        """Negation with a method prefix should re-include only that method."""
+        """Negation with a method prefix re-includes only that method."""
         discovered = ["GET /users/alice", "POST /users/alice", "GET /users/bob"]
         called = {"GET /users/bob"}
-        patterns = ["/users/*", "!GET /users/bob"]  # Exclude all users but re-include GET /users/bob
+        patterns = ["/users/*", "!GET /users/bob"]
 
         covered, uncovered, excluded_out = categorise_endpoints(discovered, called, patterns)
         assert set(covered) == {"GET /users/bob"}
@@ -194,18 +194,18 @@ class TestEndpointCategorization:
 
 
 class TestCoverageCalculationAndReporting:
-    """Tests for coverage computation and report generation."""
+    """Tests for coverage computation and report output."""
 
     @pytest.mark.parametrize(
         ("covered", "uncovered", "expected"),
         [(10, 0, 100.0), (0, 10, 0.0), (5, 5, 50.0), (3, 1, 75.0), (0, 0, 0.0)],
     )
     def test_compute_coverage(self, covered, uncovered, expected):
-        """Test coverage percentage calculation."""
+        """Coverage percentage calculation."""
         assert compute_coverage(covered, uncovered) == expected
 
     def test_prepare_endpoint_detail(self):
-        """Verify that caller information is correctly aggregated."""
+        """Caller information is correctly aggregated."""
         endpoints = ["/static", "/users/{user_id}"]
         called_data = {
             "/static": {"test_a"},
@@ -222,7 +222,7 @@ class TestCoverageCalculationAndReporting:
 
     @patch("pytest_api_cov.report.Console")
     def test_generate_report_success(self, mock_console_cls):
-        """Test report generation when coverage meets the requirement."""
+        """Report shows SUCCESS when coverage meets threshold."""
         mock_console = mock_console_cls.return_value
         config = ApiCoverageReportConfig.model_validate({"fail_under": 70.0})
         discovered = ["/a", "/b", "/c", "/d"]
@@ -230,13 +230,13 @@ class TestCoverageCalculationAndReporting:
 
         status = generate_pytest_api_cov_report(config, called, discovered)
 
-        assert status == 0  # Success
+        assert status == 0
         success_print = next(c for c in mock_console.print.call_args_list if "SUCCESS" in c.args[0])
         assert "Coverage of 75.0%" in success_print.args[0]
 
     @patch("pytest_api_cov.report.Console")
     def test_generate_report_failure(self, mock_console_cls):
-        """Test report generation when coverage is below the requirement."""
+        """Report shows FAIL when coverage is below threshold."""
         mock_console = mock_console_cls.return_value
         config = ApiCoverageReportConfig.model_validate({"fail_under": 80.0})
         discovered = ["/a", "/b", "/c", "/d"]
@@ -244,13 +244,13 @@ class TestCoverageCalculationAndReporting:
 
         status = generate_pytest_api_cov_report(config, called, discovered)
 
-        assert status == 1  # Failure
+        assert status == 1
         fail_print = next(c for c in mock_console.print.call_args_list if "FAIL" in c.args[0])
         assert "FAIL: Required coverage of 80.0% not met. Actual coverage: 75.0%" in fail_print.args[0]
 
     @patch("pytest_api_cov.report.write_report_file")
     def test_json_report_generation(self, mock_write_report):
-        """Ensure the JSON report is generated when a path is provided."""
+        """JSON report is written when report_path is set."""
         config = ApiCoverageReportConfig.model_validate({"report_path": "coverage.json"})
         status = generate_pytest_api_cov_report(config, {"/a": "foo"}, ["/a", "/b"])
 
@@ -262,7 +262,7 @@ class TestCoverageCalculationAndReporting:
 
     @patch("pytest_api_cov.report.Console")
     def test_generate_report_no_endpoints(self, mock_console_cls):
-        """Test report generation when no endpoints are discovered."""
+        """Empty endpoint list prints a warning."""
         mock_console = mock_console_cls.return_value
         config = ApiCoverageReportConfig.model_validate({})
         discovered = []
@@ -277,13 +277,13 @@ class TestCoverageCalculationAndReporting:
     @pytest.mark.parametrize(
         ("force_sugar", "expected_symbols"),
         [
-            (True, ["❌", "✅", "🚫"]),  # Unicode symbols
-            (False, ["[X]", "[.]", "[-]"]),  # ASCII symbols
+            (True, ["❌", "✅", "🚫"]),
+            (False, ["[X]", "[.]", "[-]"]),
         ],
     )
     @patch("pytest_api_cov.report.Console")
     def test_generate_report_sugar_symbols(self, mock_console_cls, force_sugar, expected_symbols):
-        """Test report generation with different symbol configurations."""
+        """Sugar/ASCII symbols match force_sugar setting."""
         mock_console = mock_console_cls.return_value
         config = ApiCoverageReportConfig.model_validate(
             {
@@ -306,23 +306,23 @@ class TestCoverageCalculationAndReporting:
 
 
 class TestPrintEndpoints:
-    """Tests for the print_endpoints function."""
+    """Tests for print_endpoints."""
 
     @patch("pytest_api_cov.report.Console")
     def test_print_endpoints_with_endpoints(self, mock_console_cls):
-        """Test print_endpoints when there are endpoints to print."""
+        """Prints label + one line per endpoint."""
         mock_console = mock_console_cls.return_value
         endpoints = ["/a", "/b"]
 
         print_endpoints(mock_console, "Test Label", endpoints, "✓", "green")
 
-        assert mock_console.print.call_count == 3  # Label + 2 endpoints
+        assert mock_console.print.call_count == 3
         label_call = mock_console.print.call_args_list[0]
         assert "Test Label" in label_call.args[0]
 
     @patch("pytest_api_cov.report.Console")
     def test_print_endpoints_without_endpoints(self, mock_console_cls):
-        """Test print_endpoints when there are no endpoints to print."""
+        """No output when endpoint list is empty."""
         mock_console = mock_console_cls.return_value
         endpoints = []
 
@@ -332,12 +332,12 @@ class TestPrintEndpoints:
 
 
 class TestWriteReportFile:
-    """Tests for the write_report_file function."""
+    """Tests for write_report_file."""
 
     @patch("pathlib.Path.open")
     @patch("json.dump")
     def test_write_report_file(self, mock_json_dump, mock_open):
-        """Test that write_report_file writes data correctly."""
+        """Report data is written as JSON."""
         report_data = {"coverage": 100.0, "endpoints": ["/a", "/b"]}
         report_path = "test_report.json"
 
