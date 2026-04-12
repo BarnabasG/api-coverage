@@ -54,7 +54,7 @@ _CLI_OPTIONS = {
     "api-cov-openapi-spec": "openapi_spec",
 }
 
-_UNSET = (None, [], False)
+_UNSET: tuple[Any, ...] = (None, [], False)
 
 
 def read_session_config(session_config: Any) -> dict[str, Any]:

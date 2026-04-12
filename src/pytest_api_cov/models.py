@@ -48,9 +48,11 @@ class ApiCallRecorder(BaseModel):
         return cls(calls=calls)
 
     def __len__(self) -> int:
+        """Return the number of distinct endpoints recorded."""
         return len(self.calls)
 
     def __contains__(self, endpoint: str) -> bool:
+        """Check if an endpoint has been recorded."""
         return endpoint in self.calls
 
     def items(self) -> Any:
@@ -73,7 +75,7 @@ class EndpointDiscovery(BaseModel):
     _seen: set[str] = set()
     discovery_source: str = Field(default="unknown")
 
-    def model_post_init(self, __context: Any) -> None:
+    def model_post_init(self, _: Any, /) -> None:
         """Sync the internal set with any pre-populated endpoints."""
         self._seen = set(self.endpoints)
 
@@ -92,6 +94,7 @@ class EndpointDiscovery(BaseModel):
                 self.endpoints.append(endpoint)
 
     def __len__(self) -> int:
+        """Return the number of discovered endpoints."""
         return len(self.endpoints)
 
 

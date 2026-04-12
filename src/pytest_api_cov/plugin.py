@@ -102,6 +102,16 @@ def pytest_sessionstart(session: pytest.Session) -> None:
         session.api_coverage_data = SessionData()  # type: ignore[attr-defined]
 
 
+def _try_get_fixture(request: pytest.FixtureRequest, names: tuple[str, ...] | list[str]) -> Any | None:
+    """Try fixture names in order, return the first found or None."""
+    for name in names:
+        try:
+            return request.getfixturevalue(name)
+        except pytest.FixtureLookupError:  # noqa: PERF203
+            continue
+    return None
+
+
 def create_coverage_fixture(fixture_name: str, existing_fixture_name: str | None = None) -> Any:
     """Create a coverage-enabled fixture with a custom name.
 
@@ -275,32 +285,26 @@ def _coverage_client_impl(request: pytest.FixtureRequest) -> Any:
 
     if not coverage_enabled or coverage_data is None:
         # Try common client fixture names then app fixture
-        for name in ("client", "test_client", "api_client", "app_client"):
-            try:
-                yield request.getfixturevalue(name)
-                return
-            except pytest.FixtureLookupError:
-                continue
+        found = _try_get_fixture(request, ("client", "test_client", "api_client", "app_client"))
+        if found is not None:
+            yield found
+            return
         try:
             app = request.getfixturevalue("app")
             adapter = get_framework_adapter(app)
-            yield adapter.get_tracked_client(None, request.node.name)
         except (pytest.FixtureLookupError, Exception):  # noqa: BLE001
             yield None
+        else:
+            yield adapter.get_tracked_client(None, request.node.name)
         return
 
     config = get_pytest_api_cov_report_config(request.config)
     _discover_openapi_endpoints(config, coverage_data)
 
     # Find a client fixture
-    client = None
-    for name in config.client_fixture_names:
-        try:
-            client = request.getfixturevalue(name)
-            logger.info(f"> Found client fixture '{name}'")
-            break
-        except pytest.FixtureLookupError:
-            continue
+    client = _try_get_fixture(request, config.client_fixture_names)
+    if client is not None:
+        logger.info("> Found client fixture")
 
     app = extract_app_from_client(client) if client else None
     if app is None:
@@ -318,10 +322,11 @@ def _coverage_client_impl(request: pytest.FixtureRequest) -> Any:
     if app is not None:
         try:
             adapter = get_framework_adapter(app)
-            yield adapter.get_tracked_client(coverage_data.recorder, request.node.name)
-            return
         except Exception as e:  # noqa: BLE001
             logger.warning(f"> Failed to create tracked client: {e}")
+        else:
+            yield adapter.get_tracked_client(coverage_data.recorder, request.node.name)
+            return
 
     logger.warning("> coverage_client could not provide a client; tests will run without API coverage.")
     yield None

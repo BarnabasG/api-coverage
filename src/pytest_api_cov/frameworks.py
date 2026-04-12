@@ -13,6 +13,7 @@ class BaseAdapter(ABC):
     """Abstract base for framework adapters."""
 
     def __init__(self, app: Any) -> None:
+        """Bind the framework app instance."""
         self.app = app
 
     @abstractmethod

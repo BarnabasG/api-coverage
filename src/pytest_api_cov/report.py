@@ -6,11 +6,12 @@ import json
 import re
 from pathlib import Path
 from re import Pattern
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from rich.console import Console
 
-from .config import ApiCoverageReportConfig
+if TYPE_CHECKING:
+    from .config import ApiCoverageReportConfig
 
 
 def endpoint_to_regex(endpoint: str) -> Pattern[str]:
