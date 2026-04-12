@@ -234,7 +234,7 @@ Or use the CLI flag multiple times:
 pytest --api-cov-report --api-cov-client-fixture-names=my_custom_client --api-cov-client-fixture-names=another_fixture
 ```
 
-If the configured fixture(s) are not found, the plugin will try to use an `app` fixture (if present) to create a tracked client. If neither is available or the plugin cannot extract the app from a discovered client fixture, the tests will still run — coverage will simply be unavailable and a warning will be logged.
+If the configured fixture(s) are not found, the plugin will try to use an `app` fixture (if present) to create a tracked client. If neither is available or the plugin cannot extract the app from a discovered client fixture, the tests will still run - coverage will simply be unavailable and a warning will be logged.
 
 #### Option 2: Helper Function
 
@@ -514,7 +514,7 @@ If coverage is not running because the plugin could not locate an app, check the
 - Ensure you are running pytest with `--api-cov-report` enabled.
 - Confirm you have a test client fixture (e.g. `client`, `test_client`, `api_client`) or an `app` fixture in your test suite.
 - If you use a custom client fixture, add its name to `client_fixture_names` in `pyproject.toml` or pass it via the CLI using `--api-cov-client-fixture-names` (repeatable) so the plugin can find and wrap it.
-- If the plugin finds the client fixture but cannot extract the underlying app (for example the client type is not supported or wrapped in an unexpected way), you will see a message like "Could not extract app from client" — in that case either provide an `app` fixture directly or wrap your existing client using `create_coverage_fixture`.
+- If the plugin finds the client fixture but cannot extract the underlying app (for example the client type is not supported or wrapped in an unexpected way), you will see a message like "Could not extract app from client" - in that case either provide an `app` fixture directly or wrap your existing client using `create_coverage_fixture`.
 
 ### No endpoints Discovered
 

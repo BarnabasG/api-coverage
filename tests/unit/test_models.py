@@ -6,16 +6,16 @@ from pytest_api_cov.models import ApiCallRecorder, EndpointDiscovery, SessionDat
 
 
 class TestApiCallRecorder:
-    """Tests for ApiCallRecorder model."""
+    """Tests for ApiCallRecorder."""
 
     def test_init_default(self):
-        """Test ApiCallRecorder initialization with defaults."""
+        """Default init has empty calls."""
         recorder = ApiCallRecorder()
         assert recorder.calls == {}
         assert len(recorder) == 0
 
     def test_record_call_new_endpoint(self):
-        """Test recording a call to a new endpoint."""
+        """Record a call to a new endpoint."""
         recorder = ApiCallRecorder()
         recorder.record_call("/test", "test_func")
 
@@ -24,7 +24,7 @@ class TestApiCallRecorder:
         assert len(recorder) == 1
 
     def test_record_call_with_method(self):
-        """Test recording a call with specific HTTP method."""
+        """Record a call with a specific HTTP method."""
         recorder = ApiCallRecorder()
         recorder.record_call("/test", "test_func", "POST")
 
@@ -33,7 +33,7 @@ class TestApiCallRecorder:
         assert len(recorder) == 1
 
     def test_record_call_different_methods_same_endpoint(self):
-        """Test recording calls to same endpoint with different methods."""
+        """Same path with different methods creates separate entries."""
         recorder = ApiCallRecorder()
         recorder.record_call("/test", "test_get", "GET")
         recorder.record_call("/test", "test_post", "POST")
@@ -45,7 +45,7 @@ class TestApiCallRecorder:
         assert len(recorder) == 2
 
     def test_record_call_existing_endpoint(self):
-        """Test recording additional calls to existing endpoint."""
+        """Multiple calls to the same endpoint accumulate callers."""
         recorder = ApiCallRecorder()
         recorder.record_call("/test", "test_func1")
         recorder.record_call("/test", "test_func2")
@@ -56,7 +56,7 @@ class TestApiCallRecorder:
         assert len(callers) == 2
 
     def test_record_call_duplicate(self):
-        """Test recording duplicate calls (should not create duplicates)."""
+        """Duplicate calls are deduplicated (set behavior)."""
         recorder = ApiCallRecorder()
         recorder.record_call("/test", "test_func")
         recorder.record_call("/test", "test_func")
@@ -66,7 +66,7 @@ class TestApiCallRecorder:
         assert "test_func" in callers
 
     def test_calls_keys(self):
-        """Test accessing recorded endpoint keys directly."""
+        """Recorded endpoint keys are accessible."""
         recorder = ApiCallRecorder()
         recorder.record_call("/endpoint1", "test1")
         recorder.record_call("/endpoint2", "test2")
@@ -77,13 +77,13 @@ class TestApiCallRecorder:
         assert "GET /endpoint2" in endpoints
 
     def test_calls_nonexistent(self):
-        """Test accessing callers for non-existent endpoint."""
+        """Non-existent endpoint returns empty set via .get()."""
         recorder = ApiCallRecorder()
         callers = recorder.calls.get("GET /nonexistent", set())
         assert callers == set()
 
     def test_merge_empty_recorder(self):
-        """Test merging with an empty recorder."""
+        """Merging an empty recorder changes nothing."""
         recorder1 = ApiCallRecorder()
         recorder1.record_call("/test", "test1")
 
@@ -94,7 +94,7 @@ class TestApiCallRecorder:
         assert "test1" in recorder1.calls["GET /test"]
 
     def test_merge_with_data(self):
-        """Test merging two recorders with data."""
+        """Merging two recorders combines all data."""
         recorder1 = ApiCallRecorder()
         recorder1.record_call("/endpoint1", "test1")
         recorder1.record_call("/shared", "test1")
@@ -115,7 +115,7 @@ class TestApiCallRecorder:
         assert len(shared_callers) == 2
 
     def test_to_serializable(self):
-        """Test converting to serializable format."""
+        """Convert to serializable format (sets -> lists)."""
         recorder = ApiCallRecorder()
         recorder.record_call("/test1", "func1")
         recorder.record_call("/test1", "func2")
@@ -131,7 +131,7 @@ class TestApiCallRecorder:
         assert serializable["GET /test2"] == ["func3"]
 
     def test_from_serializable(self):
-        """Test creating from serializable format."""
+        """Create from serializable format (lists -> sets)."""
         data = {"GET /test1": ["func1", "func2"], "POST /test2": ["func3"]}
 
         recorder = ApiCallRecorder.from_serializable(data)
@@ -143,7 +143,7 @@ class TestApiCallRecorder:
         assert recorder.calls["POST /test2"] == {"func3"}
 
     def test_contains(self):
-        """Test __contains__ method."""
+        """__contains__ checks for endpoint key presence."""
         recorder = ApiCallRecorder()
         recorder.record_call("/test", "func")
 
@@ -152,7 +152,7 @@ class TestApiCallRecorder:
         assert "GET /nonexistent" not in recorder
 
     def test_items(self):
-        """Test items() method."""
+        """items() iterates over (endpoint, callers) pairs."""
         recorder = ApiCallRecorder()
         recorder.record_call("/test1", "func1")
         recorder.record_call("/test2", "func2")
@@ -165,7 +165,7 @@ class TestApiCallRecorder:
         assert "GET /test2" in endpoints
 
     def test_keys(self):
-        """Test keys() method."""
+        """keys() returns all recorded endpoint keys."""
         recorder = ApiCallRecorder()
         recorder.record_call("/test1", "func1")
         recorder.record_call("/test2", "func2")
@@ -176,7 +176,7 @@ class TestApiCallRecorder:
         assert "GET /test2" in keys
 
     def test_values(self):
-        """Test values() method."""
+        """values() returns all caller sets."""
         recorder = ApiCallRecorder()
         recorder.record_call("/test1", "func1")
         recorder.record_call("/test2", "func2")
@@ -189,17 +189,17 @@ class TestApiCallRecorder:
 
 
 class TestEndpointDiscovery:
-    """Tests for EndpointDiscovery model."""
+    """Tests for EndpointDiscovery."""
 
     def test_init_default(self):
-        """Test EndpointDiscovery initialization with defaults."""
+        """Default init has empty endpoints."""
         discovery = EndpointDiscovery()
         assert discovery.endpoints == []
         assert discovery.discovery_source == "unknown"
         assert len(discovery) == 0
 
     def test_init_with_data(self):
-        """Test EndpointDiscovery initialization with data."""
+        """Init with pre-populated endpoints."""
         endpoints = ["GET /test1", "POST /test2"]
         discovery = EndpointDiscovery(endpoints=endpoints, discovery_source="test")
 
@@ -208,7 +208,7 @@ class TestEndpointDiscovery:
         assert len(discovery) == 2
 
     def test_add_endpoint_new(self):
-        """Test adding a new endpoint."""
+        """Add a new endpoint."""
         discovery = EndpointDiscovery()
         discovery.add_endpoint("/test")
 
@@ -216,7 +216,7 @@ class TestEndpointDiscovery:
         assert "GET /test" in discovery.endpoints
 
     def test_add_endpoint_with_method(self):
-        """Test adding an endpoint with specific method."""
+        """Add an endpoint with a specific method."""
         discovery = EndpointDiscovery()
         discovery.add_endpoint("/test", "POST")
 
@@ -224,7 +224,7 @@ class TestEndpointDiscovery:
         assert "POST /test" in discovery.endpoints
 
     def test_add_endpoint_duplicate(self):
-        """Test adding duplicate endpoint (should not create duplicates)."""
+        """Duplicate endpoints are not added twice."""
         discovery = EndpointDiscovery()
         discovery.add_endpoint("/test")
         discovery.add_endpoint("/test")
@@ -233,7 +233,7 @@ class TestEndpointDiscovery:
         assert discovery.endpoints.count("GET /test") == 1
 
     def test_merge_empty(self):
-        """Test merging with empty discovery."""
+        """Merging an empty discovery changes nothing."""
         discovery1 = EndpointDiscovery()
         discovery1.add_endpoint("/test1")
 
@@ -244,7 +244,7 @@ class TestEndpointDiscovery:
         assert "GET /test1" in discovery1.endpoints
 
     def test_merge_with_data(self):
-        """Test merging with another discovery containing data."""
+        """Merging combines endpoints and deduplicates."""
         discovery1 = EndpointDiscovery()
         discovery1.add_endpoint("/test1")
         discovery1.add_endpoint("/shared")
@@ -262,10 +262,10 @@ class TestEndpointDiscovery:
 
 
 class TestSessionData:
-    """Tests for SessionData model."""
+    """Tests for SessionData."""
 
     def test_init_default(self):
-        """Test SessionData initialization with defaults."""
+        """Default init creates empty recorder and discovery."""
         session = SessionData()
 
         assert isinstance(session.recorder, ApiCallRecorder)
@@ -274,7 +274,7 @@ class TestSessionData:
         assert len(session.discovered_endpoints) == 0
 
     def test_record_call(self):
-        """Test record_call convenience method."""
+        """record_call delegates to recorder."""
         session = SessionData()
         session.record_call("/test", "test_func")
 
@@ -282,7 +282,7 @@ class TestSessionData:
         assert "test_func" in session.recorder.calls["GET /test"]
 
     def test_record_call_with_method(self):
-        """Test record_call with specific method."""
+        """record_call with specific method."""
         session = SessionData()
         session.record_call("/test", "test_func", "POST")
 
@@ -290,7 +290,7 @@ class TestSessionData:
         assert "test_func" in session.recorder.calls["POST /test"]
 
     def test_add_discovered_endpoint(self):
-        """Test add_discovered_endpoint convenience method."""
+        """add_discovered_endpoint with method and source."""
         session = SessionData()
         session.add_discovered_endpoint("/test", "GET", "flask_adapter")
 
@@ -298,7 +298,7 @@ class TestSessionData:
         assert session.discovered_endpoints.discovery_source == "flask_adapter"
 
     def test_add_discovered_endpoint_multiple(self):
-        """Test adding multiple discovered endpoints."""
+        """Multiple discovered endpoints accumulate."""
         session = SessionData()
         session.add_discovered_endpoint("/test1", "GET", "flask_adapter")
         session.add_discovered_endpoint("/test2", "POST", "flask_adapter")
@@ -309,7 +309,7 @@ class TestSessionData:
         assert session.discovered_endpoints.discovery_source == "flask_adapter"
 
     def test_merge_worker_data_dict_serializable(self):
-        """Test merging worker data in serializable format."""
+        """Merge worker data in serializable format."""
         session = SessionData()
         session.record_call("/session", "session_test")
 
@@ -326,7 +326,7 @@ class TestSessionData:
         assert "POST /worker_endpoint" in session.discovered_endpoints.endpoints
 
     def test_merge_worker_data_dict_raw(self):
-        """Test merging worker data in raw dict format."""
+        """Merge worker data in raw dict format."""
         session = SessionData()
         session.record_call("/session", "session_test")
 
@@ -339,7 +339,7 @@ class TestSessionData:
         assert "worker_test" in session.recorder.calls["/worker"]
 
     def test_merge_worker_data_dict_mixed(self):
-        """Test merging worker data with mixed types."""
+        """Merge worker data with mixed value types."""
         session = SessionData()
 
         worker_recorder = {
@@ -368,7 +368,7 @@ class TestSessionData:
     def test_merge_worker_data_edge_cases(
         self, worker_recorder, worker_endpoints, expected_recorder_len, expected_endpoints
     ):
-        """Test merging worker data with various edge cases."""
+        """Merge worker data with edge cases (empty, non-dict, None)."""
         session = SessionData()
         if expected_recorder_len > 0:
             session.record_call("/session", "session_test")
@@ -381,19 +381,19 @@ class TestSessionData:
         for endpoint in expected_endpoints:
             assert endpoint in session.discovered_endpoints.endpoints
 
-    def test_add_discovered_endpoint_first_endpoint(self):
-        """Test adding the first endpoint sets the discovery source."""
+    def test_add_discovered_endpoint_first_sets_source(self):
+        """First endpoint sets the discovery source."""
         session = SessionData()
-        session.add_discovered_endpoint("/first", "flask_adapter")
+        session.add_discovered_endpoint("/first", "GET", "flask_adapter")
 
         assert session.discovered_endpoints.discovery_source == "flask_adapter"
         assert "GET /first" in session.discovered_endpoints.endpoints
 
-    def test_add_discovered_endpoint_subsequent_endpoints(self):
-        """Test adding subsequent endpoints doesn't change the discovery source."""
+    def test_add_discovered_endpoint_subsequent_keeps_source(self):
+        """Subsequent endpoints don't change the discovery source."""
         session = SessionData()
-        session.add_discovered_endpoint("/first", "flask_adapter")
-        session.add_discovered_endpoint("/second", "fastapi_adapter")
+        session.add_discovered_endpoint("/first", "GET", "flask_adapter")
+        session.add_discovered_endpoint("/second", "GET", "fastapi_adapter")
 
         assert session.discovered_endpoints.discovery_source == "flask_adapter"
         assert "GET /first" in session.discovered_endpoints.endpoints

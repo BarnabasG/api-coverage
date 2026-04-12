@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from pytest_api_cov.frameworks import FastAPIAdapter, FlaskAdapter, get_framework_adapter
+from pytest_api_cov.frameworks import BaseAdapter, FastAPIAdapter, FlaskAdapter, get_framework_adapter
 
 
 class MockFlaskRule:
@@ -25,7 +25,7 @@ class MockFastAPIRoute:
 
 
 class TestFlaskAdapter:
-    """Tests for the Flask framework adapter."""
+    """Tests for the Flask adapter."""
 
     def setup_method(self):
         """Set up test fixtures."""
@@ -36,18 +36,18 @@ class TestFlaskAdapter:
         self.adapter = FlaskAdapter(self.mock_app)
 
     def test_flask_get_endpoints(self):
-        """Verify endpoint discovery for Flask."""
+        """Discover Flask endpoints."""
         endpoints = self.adapter.get_endpoints()
         expected = ["GET /", "GET /users/<id>", "POST /", "POST /users/<id>"]
         assert sorted(endpoints) == sorted(expected)
 
     def test_flask_get_tracked_client_no_recorder(self):
-        """Test that get_tracked_client returns normal client when recorder is None."""
+        """No recorder returns a normal test client."""
         client = self.adapter.get_tracked_client(None, "test_name")
         assert client == self.mock_app.test_client()
 
     def test_flask_get_tracked_client_with_recorder(self):
-        """Test that get_tracked_client returns tracking client when recorder is provided."""
+        """Recorder returns a TrackingFlaskClient."""
         self.mock_app.response_class = type("MockResponse", (), {})
 
         recorder = {}
@@ -56,7 +56,7 @@ class TestFlaskAdapter:
         assert "TrackingFlaskClient" in str(type(client))
 
     def test_flask_tracking_client_open_method(self):
-        """Test the TrackingFlaskClient open method."""
+        """TrackingFlaskClient.open forwards calls."""
         with patch("flask.testing.FlaskClient"):
             recorder = {}
             client = self.adapter.get_tracked_client(recorder, "test_name")
@@ -70,9 +70,7 @@ class TestFlaskAdapter:
             assert response == "response"
 
     def test_flask_tracking_client_exception_handling(self):
-        """Test exception handling in Flask tracking client."""
-        from unittest.mock import Mock, patch
-
+        """Exceptions during URL matching are silently caught."""
         self.mock_app.response_class = type("MockResponse", (), {})
 
         recorder = {}
@@ -89,9 +87,10 @@ class TestFlaskAdapter:
 
 
 class TestFastAPIAdapter:
-    """Tests for the FastAPI framework adapter."""
+    """Tests for the FastAPI adapter."""
 
     def setup_method(self):
+        """Set up test fixtures."""
         self.mock_app = Mock()
         self.mock_app.__module__ = "fastapi"
         type(self.mock_app).__name__ = "FastAPI"
@@ -106,27 +105,27 @@ class TestFastAPIAdapter:
         self.adapter = FastAPIAdapter(self.mock_app)
 
     def test_fastapi_get_endpoints(self):
-        """Verify endpoint discovery for FastAPI."""
+        """Discover FastAPI endpoints."""
         with patch("fastapi.routing.APIRoute", MockFastAPIRoute):
             endpoints = self.adapter.get_endpoints()
             expected = ["GET /", "GET /items/{item_id}", "POST /", "POST /items/{item_id}"]
             assert sorted(endpoints) == sorted(expected)
 
     def test_fastapi_get_tracked_client_no_recorder(self):
-        """Test that get_tracked_client returns normal client when recorder is None."""
+        """No recorder returns a normal TestClient."""
         with patch("starlette.testclient.TestClient") as MockTestClient:
             self.adapter.get_tracked_client(None, "test_name")
             MockTestClient.assert_called_once_with(self.mock_app)
 
     def test_fastapi_get_tracked_client_with_recorder(self):
-        """Test that get_tracked_client returns tracking client when recorder is provided."""
+        """Recorder returns a TrackingFastAPIClient."""
         recorder = {}
         client = self.adapter.get_tracked_client(recorder, "test_name")
         assert hasattr(client, "send")
         assert "TrackingFastAPIClient" in str(type(client))
 
     def test_fastapi_tracking_client_send_method(self):
-        """Test the TrackingFastAPIClient send method exists and can be called."""
+        """TrackingFastAPIClient.send records calls and forwards."""
         from pytest_api_cov.models import ApiCallRecorder
 
         recorder = ApiCallRecorder()
@@ -147,43 +146,43 @@ class TestFastAPIAdapter:
 
 
 class TestBaseAdapter:
-    """Test the base adapter class."""
+    """Tests for the abstract base adapter."""
 
-    def test_base_adapter_get_endpoints_not_implemented(self):
-        """Test that BaseAdapter.get_endpoints raises NotImplementedError."""
-        from pytest_api_cov.frameworks import BaseAdapter
+    def test_base_adapter_cannot_be_instantiated(self):
+        """BaseAdapter is abstract and cannot be instantiated directly."""
+        with pytest.raises(TypeError, match="Can't instantiate abstract class"):
+            BaseAdapter(None)
 
-        base_adapter = BaseAdapter(None)
-        with pytest.raises(NotImplementedError):
-            base_adapter.get_endpoints()
+    def test_base_adapter_subclass_must_implement_methods(self):
+        """Subclasses missing abstract methods cannot be instantiated."""
 
-    def test_base_adapter_get_tracked_client_not_implemented(self):
-        """Test that BaseAdapter.get_tracked_client raises NotImplementedError."""
-        from pytest_api_cov.frameworks import BaseAdapter
+        class PartialAdapter(BaseAdapter):
+            def get_endpoints(self):
+                return []
 
-        base_adapter = BaseAdapter(None)
-        with pytest.raises(NotImplementedError):
-            base_adapter.get_tracked_client({}, "test")
+        with pytest.raises(TypeError, match="Can't instantiate abstract class"):
+            PartialAdapter(None)
+
+    def test_base_adapter_complete_subclass(self):
+        """Subclasses implementing all methods can be instantiated."""
+
+        class CompleteAdapter(BaseAdapter):
+            def get_endpoints(self):
+                return []
+
+            def get_tracked_client(self, recorder, test_name):
+                return None
+
+        adapter = CompleteAdapter(None)
+        assert adapter.get_endpoints() == []
+        assert adapter.get_tracked_client(None, "test") is None
 
 
 class TestAdapterFactory:
-    """Tests the factory function for getting adapters."""
+    """Tests for the adapter factory function."""
 
     def test_get_framework_adapter(self):
-        """Test the factory function for selecting the correct adapter."""
-
-        class MockFlask:
-            __module__ = "flask.app"
-            __name__ = "Flask"
-
-        class MockFastAPI:
-            __module__ = "fastapi.applications"
-            __name__ = "FastAPI"
-
-        class MockWSGIHandler:
-            __module__ = "django.core.handlers.wsgi"
-            __name__ = "WSGIHandler"
-
+        """Factory returns correct adapter per framework."""
         mock_flask_app = Mock()
         mock_flask_app.__class__.__module__ = "flask.app"
         mock_flask_app.__class__.__name__ = "Flask"
@@ -203,7 +202,6 @@ class TestAdapterFactory:
         assert isinstance(get_framework_adapter(mock_flask_app), FlaskAdapter)
         assert isinstance(get_framework_adapter(mock_fastapi_app), FastAPIAdapter)
 
-        # Django is now supported
         from pytest_api_cov.frameworks import DjangoAdapter
 
         assert isinstance(get_framework_adapter(mock_django_app), DjangoAdapter)
@@ -212,7 +210,7 @@ class TestAdapterFactory:
             get_framework_adapter(mock_unsupported_app)
 
     def test_get_framework_adapter_with_missing_module(self):
-        """Test factory function with app that has no __module__ attribute."""
+        """App without __module__ raises TypeError."""
         mock_app = Mock()
         mock_class = Mock()
         mock_class.__name__ = "UnknownApp"

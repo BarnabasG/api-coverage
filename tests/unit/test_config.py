@@ -1,11 +1,11 @@
 """Tests for configuration module."""
 
 import os
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
 import tomli
-from pathlib import Path
 from pydantic import ValidationError
 
 from pytest_api_cov.config import (
@@ -21,7 +21,7 @@ class TestConfigLoading:
     """Tests for loading configuration from different sources."""
 
     def test_read_toml_config_success(self, tmp_path):
-        """Verify reading a valid pyproject.toml."""
+        """Read a valid pyproject.toml."""
         pyproject_content = """
             [tool.pytest_api_cov]
             fail_under = 95.5
@@ -41,19 +41,19 @@ class TestConfigLoading:
             os.chdir(original_cwd)
 
     def test_read_toml_config_file_not_found(self):
-        """Ensure it returns an empty dict if pyproject.toml is missing."""
+        """Return empty dict when pyproject.toml is missing."""
         with patch("pathlib.Path.open", side_effect=FileNotFoundError):
             config = read_toml_config()
             assert config == {}
 
     def test_read_toml_config_toml_decode_error(self):
-        """Ensure it returns an empty dict if pyproject.toml has syntax errors."""
+        """Return empty dict on TOML syntax errors."""
         with patch("pathlib.Path.open", side_effect=tomli.TOMLDecodeError("Invalid TOML", "", 0)):
             config = read_toml_config()
             assert config == {}
 
     def test_read_toml_config_missing_section(self, tmp_path):
-        """Ensure it returns an empty dict if the [tool.pytest_api_cov] section is missing."""
+        """Return empty dict when [tool.pytest_api_cov] section is absent."""
         (tmp_path / "pyproject.toml").write_text("[project]\nname = 'test'")
 
         original_cwd = Path.cwd()
@@ -65,7 +65,7 @@ class TestConfigLoading:
             os.chdir(original_cwd)
 
     def test_read_session_config(self):
-        """Verify reading config from pytest's session object (CLI flags)."""
+        """Read config from pytest CLI flags."""
         mock_session_config = Mock()
         mock_session_config.getoption.side_effect = lambda name: {
             "--api-cov-fail-under": 80.0,
@@ -80,7 +80,7 @@ class TestConfigLoading:
         assert "show_excluded_endpoints" not in config
 
     def test_read_session_config_with_false_values(self):
-        """Test that False values are not included in config."""
+        """False values are not included in config."""
         mock_session_config = Mock()
         mock_session_config.getoption.side_effect = lambda name: {
             "--api-cov-show-covered-endpoints": False,
@@ -92,7 +92,7 @@ class TestConfigLoading:
         assert "exclusion_patterns" not in config
 
     def test_read_session_config_with_none_values(self):
-        """Test that None values are not included in config."""
+        """None values are not included in config."""
         mock_session_config = Mock()
         mock_session_config.getoption.side_effect = lambda name: {
             "--api-cov-fail-under": None,
@@ -102,33 +102,31 @@ class TestConfigLoading:
         assert "fail_under" not in config
 
     @pytest.mark.parametrize(
-        ("is_tty", "encoding", "stdout_bool", "expected"),
+        ("is_tty", "encoding", "expected"),
         [
-            (False, "utf-8", True, False),
-            (True, "utf-8", True, True),
-            (True, "UTF8", True, True),
-            (True, "ascii", True, False),
-            (True, "utf-8", False, False),
+            (False, "utf-8", False),
+            (True, "utf-8", True),
+            (True, "UTF8", True),
+            (True, "ascii", False),
         ],
     )
-    def test_supports_unicode(self, is_tty, encoding, stdout_bool, expected):
-        """Test supports_unicode with various configurations."""
+    def test_supports_unicode(self, is_tty, encoding, expected):
+        """Check unicode support detection."""
         mock_stdout = Mock()
         mock_stdout.isatty.return_value = is_tty
         mock_stdout.encoding = encoding
-        mock_stdout.__bool__ = Mock(return_value=stdout_bool)
 
         with patch("sys.stdout", mock_stdout):
             assert supports_unicode() == expected
 
 
 class TestConfigMerging:
-    """Tests the merging logic of different config sources."""
+    """Tests for config merging logic."""
 
     @patch("pytest_api_cov.config.read_session_config")
     @patch("pytest_api_cov.config.read_toml_config")
     def test_config_priority_cli_over_toml(self, mock_read_toml, mock_read_session):
-        """Ensure CLI arguments override pyproject.toml settings."""
+        """CLI arguments override pyproject.toml settings."""
         mock_read_toml.return_value = {"fail_under": 90.0, "report_path": "toml.json"}
         mock_read_session.return_value = {"fail_under": 75.0}
 
@@ -142,7 +140,7 @@ class TestConfigMerging:
     @patch("pytest_api_cov.config.read_session_config", return_value={})
     @patch("pytest_api_cov.config.read_toml_config")
     def test_pydantic_model_validation(self, mock_read_toml, mock_read_session):
-        """Test that the Pydantic model correctly validates and sets defaults."""
+        """Pydantic model validates and sets defaults correctly."""
         mock_read_toml.return_value = {"fail_under": 90.0}
 
         final_config = get_pytest_api_cov_report_config(Mock())
@@ -156,7 +154,7 @@ class TestConfigMerging:
     @patch("pytest_api_cov.config.read_toml_config")
     @patch("pytest_api_cov.config.supports_unicode")
     def test_force_sugar_setting(self, mock_supports_unicode, mock_read_toml, mock_read_session):
-        """Test force_sugar setting logic."""
+        """force_sugar respects disabled flag and unicode support."""
         mock_supports_unicode.return_value = True
         mock_read_toml.return_value = {}
 
@@ -173,12 +171,12 @@ class TestConfigMerging:
         assert config.force_sugar is False
 
     def test_pydantic_validation_error(self):
-        """Ensure invalid types raise a validation error."""
+        """Invalid types raise ValidationError."""
         with pytest.raises(ValidationError):
             ApiCoverageReportConfig.model_validate({"fail_under": "not-a-float"})
 
     def test_read_session_config_empty_options(self):
-        """Test read_session_config with no options set."""
+        """No options set returns empty dict."""
         mock_session_config = Mock()
         mock_session_config.getoption.return_value = None
 
@@ -186,7 +184,7 @@ class TestConfigMerging:
         assert config == {}
 
     def test_read_session_config_with_empty_list(self):
-        """Test read_session_config with empty list value."""
+        """Empty list value is treated as unset."""
         mock_session_config = Mock()
         mock_session_config.getoption.side_effect = lambda name: {
             "--api-cov-exclusion-patterns": [],
@@ -196,7 +194,7 @@ class TestConfigMerging:
         assert "exclusion_patterns" not in config
 
     def test_read_session_config_with_false_boolean(self):
-        """Test read_session_config with False boolean value."""
+        """False boolean value is treated as unset."""
         mock_session_config = Mock()
         mock_session_config.getoption.side_effect = lambda name: {
             "--api-cov-show-covered-endpoints": False,
@@ -206,7 +204,7 @@ class TestConfigMerging:
         assert "show_covered_endpoints" not in config
 
     def test_read_session_config_with_none_value(self):
-        """Test read_session_config with None value."""
+        """None value is treated as unset."""
         mock_session_config = Mock()
         mock_session_config.getoption.side_effect = lambda name: {
             "--api-cov-fail-under": None,
@@ -216,7 +214,7 @@ class TestConfigMerging:
         assert "fail_under" not in config
 
     def test_read_session_config_with_openapi_spec(self):
-        """Test read_session_config with openapi_spec."""
+        """openapi_spec is read from CLI flags."""
         mock_session_config = Mock()
         mock_session_config.getoption.side_effect = lambda name: {
             "--api-cov-openapi-spec": "openapi.json",
@@ -226,7 +224,7 @@ class TestConfigMerging:
         assert config["openapi_spec"] == "openapi.json"
 
     def test_read_toml_config_with_openapi_spec(self, tmp_path):
-        """Verify reading openapi_spec from pyproject.toml."""
+        """openapi_spec is read from pyproject.toml."""
         pyproject_content = """
             [tool.pytest_api_cov]
             openapi_spec = "openapi.yaml"

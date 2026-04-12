@@ -1,11 +1,12 @@
 """pytest plugin for API coverage tracking."""
 
 import logging
-from typing import Any, Optional, Tuple
+from typing import Any
 
 import pytest
 
 from .config import ApiCoverageReportConfig, get_pytest_api_cov_report_config
+from .frameworks import get_framework_adapter, is_supported_framework
 from .models import SessionData
 from .openapi import parse_openapi_spec
 from .pytest_flags import add_pytest_api_cov_flags
@@ -37,8 +38,6 @@ def _discover_app_endpoints(app: Any, coverage_data: SessionData, fixture_name: 
         return
 
     try:
-        from .frameworks import get_framework_adapter
-
         adapter = get_framework_adapter(app)
         endpoints = adapter.get_endpoints()
         framework_name = type(app).__name__
@@ -52,37 +51,18 @@ def _discover_app_endpoints(app: Any, coverage_data: SessionData, fixture_name: 
         logger.warning(f"> Failed to discover endpoints from app: {e}")
 
 
-def is_supported_framework(app: Any) -> bool:
-    """Check if the app is a supported framework (Flask or FastAPI)."""
-    if app is None:
-        return False
-
-    app_type = type(app).__name__
-    module_name = getattr(type(app), "__module__", "").split(".")[0]
-
-    return (
-        (module_name == "flask" and app_type == "Flask")
-        or (module_name == "flask_openapi3" and app_type == "OpenAPI")
-        or (module_name == "fastapi" and app_type == "FastAPI")
-        or (module_name == "django.core.handlers.wsgi" and app_type == "WSGIHandler")
-        or (module_name == "django" or "django" in module_name)
-    )
-
-
-def extract_app_from_client(client: Any) -> Optional[Any]:
-    """Extract app from various client types."""
-    # Typical attributes used by popular clients
+def extract_app_from_client(client: Any) -> Any | None:
+    """Extract app from various test client types."""
     if client is None:
         return None
 
-    # common attribute for requests-like test clients
     if hasattr(client, "app"):
         return client.app
 
     if hasattr(client, "application"):
         return client.application
 
-    # Starlette/requests transport internals
+    # Starlette/httpx transport internals
     if hasattr(client, "_transport") and hasattr(client._transport, "app"):
         return client._transport.app
 
@@ -102,22 +82,14 @@ def pytest_configure(config: pytest.Config) -> None:
     if config.getoption("--api-cov-report"):
         verbosity = config.option.verbose
 
-        if verbosity >= 2:  # -vv or more
+        if verbosity >= 2:
             log_level = logging.DEBUG
-        elif verbosity >= 1:  # -v
+        elif verbosity >= 1:
             log_level = logging.INFO
         else:
             log_level = logging.WARNING
 
         logger.setLevel(log_level)
-
-        # if not logger.handlers:
-        #     handler = logging.StreamHandler()
-        #     handler.setLevel(log_level)
-        #     formatter = logging.Formatter("%(message)s")
-        #     handler.setFormatter(formatter)
-        #     logger.addHandler(handler)
-
         logger.info("Initializing API coverage plugin...")
 
     if config.pluginmanager.hasplugin("xdist"):
@@ -125,40 +97,35 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 def pytest_sessionstart(session: pytest.Session) -> None:
-    """Initialize the call recorder at the start of the session."""
+    """Initialize coverage data at session start."""
     if session.config.getoption("--api-cov-report"):
         session.api_coverage_data = SessionData()  # type: ignore[attr-defined]
 
 
-def create_coverage_fixture(fixture_name: str, existing_fixture_name: Optional[str] = None) -> Any:
+def _try_get_fixture(request: pytest.FixtureRequest, names: tuple[str, ...] | list[str]) -> Any | None:
+    """Try fixture names in order, return the first found or None."""
+    for name in names:
+        try:
+            return request.getfixturevalue(name)
+        except pytest.FixtureLookupError:  # noqa: PERF203
+            continue
+    return None
+
+
+def create_coverage_fixture(fixture_name: str, existing_fixture_name: str | None = None) -> Any:
     """Create a coverage-enabled fixture with a custom name.
 
-    Args:
-        fixture_name: The name for the new fixture
-        existing_fixture_name: Optional name of existing fixture to wrap
+    Example::
 
-    Returns:
-        A pytest fixture function that can be used in conftest.py
-
-    Example usage in conftest.py:
-        import pytest
-        from pytest_api_cov.plugin import create_coverage_fixture
-
-        # Create a new fixture
         my_client = create_coverage_fixture('my_client')
-
-        # Wrap an existing fixture
         flask_client = create_coverage_fixture('flask_client', 'original_flask_client')
-
     """
 
     def fixture_func(request: pytest.FixtureRequest) -> Any:
         """Coverage-enabled client fixture."""
         session = request.node.session
 
-        # Do not skip tests; if coverage is disabled or not initialized, try to return an existing client
         coverage_enabled = bool(session.config.getoption("--api-cov-report"))
-
         coverage_data = getattr(session, "api_coverage_data", None)
 
         # Try to obtain an existing client if requested
@@ -170,12 +137,11 @@ def create_coverage_fixture(fixture_name: str, existing_fixture_name: Optional[s
             except pytest.FixtureLookupError:
                 logger.warning(f"> Existing fixture '{existing_fixture_name}' not found when creating '{fixture_name}'")
 
-        # If coverage is not enabled or recorder not available, return existing client (if any)
+        # Without coverage, just pass through the existing client
         if not coverage_enabled or coverage_data is None:
             if existing_client is not None:
                 yield existing_client
                 return
-            # Try to fall back to an app fixture to construct a client
             try:
                 app = request.getfixturevalue("app")
             except pytest.FixtureLookupError:
@@ -184,10 +150,7 @@ def create_coverage_fixture(fixture_name: str, existing_fixture_name: Optional[s
                 )
                 yield None
                 return
-            # if we have an app, attempt to create a tracked client using adapter without recorder
             try:
-                from .frameworks import get_framework_adapter
-
                 adapter = get_framework_adapter(app)
                 client = adapter.get_tracked_client(None, request.node.name)
             except Exception:  # noqa: BLE001
@@ -197,14 +160,10 @@ def create_coverage_fixture(fixture_name: str, existing_fixture_name: Optional[s
                 yield client
                 return
 
-        # At this point coverage is enabled and coverage_data exists
         config = get_pytest_api_cov_report_config(request.config)
-
-        # Check for OpenAPI spec first
         _discover_openapi_endpoints(config, coverage_data)
 
         if existing_client is None:
-            # Try to find a client fixture by common names
             for name in config.client_fixture_names:
                 try:
                     existing_client = request.getfixturevalue(name)
@@ -223,10 +182,8 @@ def create_coverage_fixture(fixture_name: str, existing_fixture_name: Optional[s
             except pytest.FixtureLookupError:
                 app = None
 
-        # Discover endpoints from app if not already discovered
         _discover_app_endpoints(app, coverage_data, fixture_name)
 
-        # If we have an existing client, wrap it; otherwise try to create a tracked client from app
         if existing_client is not None:
             wrapped = wrap_client_with_coverage(existing_client, coverage_data.recorder, request.node.name)
             yield wrapped
@@ -234,8 +191,6 @@ def create_coverage_fixture(fixture_name: str, existing_fixture_name: Optional[s
 
         if app is not None:
             try:
-                from .frameworks import get_framework_adapter
-
                 adapter = get_framework_adapter(app)
                 client = adapter.get_tracked_client(coverage_data.recorder, request.node.name)
             except Exception as e:  # noqa: BLE001
@@ -244,7 +199,7 @@ def create_coverage_fixture(fixture_name: str, existing_fixture_name: Optional[s
                 yield client
                 return
 
-        # Last resort: yield None but do not skip
+        # Last resort — yield None but don't skip, so tests still run
         logger.warning(
             f"> create_coverage_fixture('{fixture_name}') could not provide a client; "
             "tests will run without API coverage for this fixture."
@@ -264,41 +219,27 @@ def wrap_client_with_coverage(client: Any, recorder: Any, test_name: str) -> Any
         def __init__(self, wrapped_client: Any) -> None:
             self._wrapped = wrapped_client
 
-        def _extract_path_and_method(self, name: str, args: Any, kwargs: Any) -> Optional[Tuple[str, str]]:
-            # Try several strategies to obtain a path and method
-            path = None
-            method = None
-
-            # First, if args[0] looks like a string path
+        def _extract_path_and_method(self, name: str, args: Any, kwargs: Any) -> tuple[str, str] | None:
+            """Pull path and HTTP method from the call arguments."""
             if args:
                 first = args[0]
                 if isinstance(first, str):
                     path = first.partition("?")[0]
                     method = kwargs.get("method", name).upper()
-                    if method == "OPEN":
-                        method = "GET"
+                    return path, ("GET" if method == "OPEN" else method)
 
-                    return path, method
-
-                # For starlette/requests TestClient, args[0] may be a Request or PreparedRequest
                 if hasattr(first, "url") and hasattr(first.url, "path"):
                     try:
-                        path = first.url.path
-                        method = getattr(first, "method", name).upper()
+                        return first.url.path, getattr(first, "method", name).upper()
                     except Exception:  # noqa: BLE001
                         pass
-                    else:
-                        return path, method
 
             if kwargs:
                 path_kw = kwargs.get("path") or kwargs.get("url") or kwargs.get("uri")
                 if isinstance(path_kw, str):
                     path = path_kw.partition("?")[0]
                     method = kwargs.get("method", name).upper()
-                    if method == "OPEN":
-                        method = "GET"
-
-                    return path, method
+                    return path, ("GET" if method == "OPEN" else method)
 
             return None
 
@@ -335,128 +276,91 @@ def wrap_client_with_coverage(client: Any, recorder: Any, test_name: str) -> Any
     return CoverageWrapper(client)
 
 
-@pytest.fixture
-def coverage_client(request: pytest.FixtureRequest) -> Any:
-    """Smart  client fixture that wrap's user's existing test client with coverage tracking."""
+def _coverage_client_impl(request: pytest.FixtureRequest) -> Any:
+    """Inner generator shared by coverage_client and create_coverage_fixture."""
     session = request.node.session
 
-    if not session.config.getoption("--api-cov-report"):
-        pytest.skip("API coverage not enabled. Use --api-cov-report flag.")
-
-    config = get_pytest_api_cov_report_config(request.config)
+    coverage_enabled = bool(session.config.getoption("--api-cov-report"))
     coverage_data = getattr(session, "api_coverage_data", None)
-    if coverage_data is None:
-        pytest.skip("API coverage data not initialized. This should not happen.")
 
-    # Check for OpenAPI spec first
-    if config.openapi_spec and not coverage_data.discovered_endpoints.endpoints:
-        endpoints = parse_openapi_spec(config.openapi_spec)
-        if endpoints:
-            for endpoint_method in endpoints:
-                method, path = endpoint_method.split(" ", 1)
-                coverage_data.add_discovered_endpoint(path, method, "openapi_spec")
-            logger.info(
-                f"> pytest-api-coverage: Discovered {len(endpoints)} endpoints from OpenAPI spec: {config.openapi_spec}"
-            )
-        else:
-            logger.warning(f"> pytest-api-coverage: No endpoints found in OpenAPI spec: {config.openapi_spec}")
-
-    client = None
-    for fixture_name in config.client_fixture_names:
-        try:
-            client = request.getfixturevalue(fixture_name)
-            logger.info(f"> Found custom fixture '{fixture_name}', wrapping with coverage tracking")
-            break
-        except pytest.FixtureLookupError:
-            logger.debug(f"> Custom fixture '{fixture_name}' not found")
-            continue
-
-    if client is None:
-        # Try to fallback to an 'app' fixture and create a tracked client
+    if not coverage_enabled or coverage_data is None:
+        # Try common client fixture names then app fixture
+        found = _try_get_fixture(request, ("client", "test_client", "api_client", "app_client"))
+        if found is not None:
+            yield found
+            return
         try:
             app = request.getfixturevalue("app")
-            logger.info("> Found 'app' fixture, creating tracked client from app")
-            from .frameworks import get_framework_adapter
-
             adapter = get_framework_adapter(app)
-            client = adapter.get_tracked_client(coverage_data.recorder, request.node.name)
-        except pytest.FixtureLookupError:
-            logger.warning("> No test client fixture found and no 'app' fixture available. Falling back to None")
-            client = None
-        except Exception as e:  # noqa: BLE001
-            logger.warning(f"> Failed to create tracked client from 'app' fixture: {e}")
-            client = None
+        except (pytest.FixtureLookupError, Exception):  # noqa: BLE001
+            yield None
+        else:
+            yield adapter.get_tracked_client(None, request.node.name)
+        return
 
-    if client is None:
-        logger.warning("> Coverage client could not be created; tests will run without API coverage for this session.")
-        return None
+    config = get_pytest_api_cov_report_config(request.config)
+    _discover_openapi_endpoints(config, coverage_data)
 
-    app = extract_app_from_client(client)
-    logger.debug(f"> Extracted app from client: {app}, app type: {type(app).__name__ if app else None}")
+    # Find a client fixture
+    client = _try_get_fixture(request, config.client_fixture_names)
+    if client is not None:
+        logger.info("> Found client fixture")
 
+    app = extract_app_from_client(client) if client else None
     if app is None:
-        logger.warning("> No app found, returning client without coverage tracking")
-        return client
-
-    if not is_supported_framework(app):
-        logger.warning(
-            f"> Unsupported framework: {type(app).__name__}. pytest-api-coverage supports Flask, FastAPI, and Django."
-        )
-        return client
-
-    try:
-        from .frameworks import get_framework_adapter
-
-        adapter = get_framework_adapter(app)
-        logger.debug(f"> Got adapter: {adapter}, adapter type: {type(adapter).__name__ if adapter else None}")
-    except TypeError as e:
-        logger.warning(f"> Framework detection failed: {e}")
-        return client
-
-    if not coverage_data.discovered_endpoints.endpoints:
         try:
-            endpoints = adapter.get_endpoints()
-            logger.debug(f"> Adapter returned {len(endpoints)} endpoints")
-            framework_name = type(app).__name__
-            for endpoint_method in endpoints:
-                method, path = endpoint_method.split(" ", 1)
-                coverage_data.add_discovered_endpoint(path, method, f"{framework_name.lower()}_adapter")
-            logger.info(f"> pytest-api-coverage: Discovered {len(endpoints)} endpoints.")
-            logger.debug(f"> Discovered endpoints: {endpoints}")
-        except Exception as e:  # noqa: BLE001
-            logger.warning(f"> pytest-api-coverage: Could not discover endpoints. Error: {e}")
-            return client
+            app = request.getfixturevalue("app")
+        except pytest.FixtureLookupError:
+            app = None
 
-    return wrap_client_with_coverage(client, coverage_data.recorder, request.node.name)
+    _discover_app_endpoints(app, coverage_data, "coverage_client")
+
+    if client is not None:
+        yield wrap_client_with_coverage(client, coverage_data.recorder, request.node.name)
+        return
+
+    if app is not None:
+        try:
+            adapter = get_framework_adapter(app)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"> Failed to create tracked client: {e}")
+        else:
+            yield adapter.get_tracked_client(coverage_data.recorder, request.node.name)
+            return
+
+    logger.warning("> coverage_client could not provide a client; tests will run without API coverage.")
+    yield None
+
+
+@pytest.fixture
+def coverage_client(request: pytest.FixtureRequest) -> Any:
+    """Smart client fixture that wraps the user's test client with coverage tracking."""
+    yield from _coverage_client_impl(request)
 
 
 def pytest_sessionfinish(session: pytest.Session) -> None:
-    """Generate the API coverage report at the end of the session."""
+    """Generate the API coverage report at session end."""
     if session.config.getoption("--api-cov-report"):
         coverage_data = getattr(session, "api_coverage_data", None)
         if coverage_data is None:
             logger.warning("> No API coverage data found. Plugin may not have been properly initialized.")
             return
 
-        logger.debug(f"> pytest-api-coverage: Generating report for {len(coverage_data.recorder)} recorded endpoints.")
+        logger.debug(f"> Generating report for {len(coverage_data.recorder)} recorded endpoints.")
         if hasattr(session.config, "workeroutput"):
             serializable_recorder = coverage_data.recorder.to_serializable()
             session.config.workeroutput["api_call_recorder"] = serializable_recorder
             session.config.workeroutput["discovered_endpoints"] = coverage_data.discovered_endpoints.endpoints
             logger.debug("> Sent API call data and discovered endpoints to master process")
         else:
-            logger.debug("> No workeroutput found, generating report for master data.")
-
             worker_recorder_data = getattr(session.config, "worker_api_call_recorder", {})
             worker_endpoints = getattr(session.config, "worker_discovered_endpoints", [])
 
-            # Merge worker data into session data
             if worker_recorder_data or worker_endpoints:
                 coverage_data.merge_worker_data(worker_recorder_data, worker_endpoints)
                 logger.debug(f"> Merged worker data: {len(worker_recorder_data)} endpoints")
 
             logger.debug(f"> Final merged data: {len(coverage_data.recorder)} recorded endpoints")
-            logger.debug(f"> Using discovered endpoints: {coverage_data.discovered_endpoints.endpoints}")
 
             api_cov_config = get_pytest_api_cov_report_config(session.config)
             status = generate_pytest_api_cov_report(
@@ -475,33 +379,21 @@ def pytest_sessionfinish(session: pytest.Session) -> None:
 
 
 class DeferXdistPlugin:
-    """Simple class to defer pytest-xdist hook until we know it is installed."""
+    """Defers pytest-xdist hook until we know it is installed."""
 
     def pytest_testnodedown(self, node: Any) -> None:
         """Collect API call data from each worker as they finish."""
-        logger.debug("> pytest-api-coverage: Worker node down.")
+        logger.debug("> Worker node down.")
         worker_data = node.workeroutput.get("api_call_recorder", {})
         discovered_endpoints = node.workeroutput.get("discovered_endpoints", [])
-        logger.debug(f"> Worker data: {worker_data}")
-        logger.debug(f"> Worker discovered endpoints: {discovered_endpoints}")
 
-        # Merge API call data
         if worker_data:
-            logger.debug("> Worker data found, merging with current data.")
             current = getattr(node.config, "worker_api_call_recorder", {})
-            logger.debug(f"> Current data before merge: {current}")
 
-            # Merge the worker data into current
             for endpoint, calls in worker_data.items():
-                if endpoint not in current:
-                    current[endpoint] = set()
-                elif not isinstance(current[endpoint], set):
-                    current[endpoint] = set(current[endpoint])
-                current[endpoint].update(calls)
-                logger.debug(f"> Updated endpoint {endpoint} with calls: {calls}")
+                current.setdefault(endpoint, set()).update(calls)
 
             node.config.worker_api_call_recorder = current
-            logger.debug(f"> Updated current data: {current}")
 
         if discovered_endpoints and not getattr(node.config, "worker_discovered_endpoints", []):
             node.config.worker_discovered_endpoints = discovered_endpoints
