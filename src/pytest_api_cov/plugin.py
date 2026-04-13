@@ -199,7 +199,7 @@ def create_coverage_fixture(fixture_name: str, existing_fixture_name: str | None
                 yield client
                 return
 
-        # Last resort — yield None but don't skip, so tests still run
+        # Last resort - yield None but don't skip, so tests still run
         logger.warning(
             f"> create_coverage_fixture('{fixture_name}') could not provide a client; "
             "tests will run without API coverage for this fixture."
@@ -219,8 +219,19 @@ def wrap_client_with_coverage(client: Any, recorder: Any, test_name: str) -> Any
         def __init__(self, wrapped_client: Any) -> None:
             self._wrapped = wrapped_client
 
+        _TRACKED_NAMES = frozenset({"get", "post", "put", "delete", "patch", "head", "options", "request", "open"})
+
         def _extract_path_and_method(self, name: str, args: Any, kwargs: Any) -> tuple[str, str] | None:
             """Pull path and HTTP method from the call arguments."""
+            # .request(method, url, ...) - method is first arg, url is second
+            if name == "request":
+                req_method = (args[0] if args else kwargs.get("method", "GET")).upper()
+                req_url = args[1] if len(args) > 1 else kwargs.get("url")
+                if isinstance(req_url, str):
+                    return req_url.partition("?")[0], req_method
+                return None
+
+            # .get(url), .post(url), .open(url), etc. - url is first arg
             if args:
                 first = args[0]
                 if isinstance(first, str):
@@ -245,9 +256,9 @@ def wrap_client_with_coverage(client: Any, recorder: Any, test_name: str) -> Any
 
         def __getattr__(self, name: str) -> Any:
             attr = getattr(self._wrapped, name)
-            if name in {"get", "post", "put", "delete", "patch", "head", "options"}:
+            if name in self._TRACKED_NAMES:
 
-                def tracked_method(*args: Any, **kwargs: Any) -> Any:
+                def tracked(*args: Any, **kwargs: Any) -> Any:
                     response = attr(*args, **kwargs)
                     if recorder is not None:
                         pm = self._extract_path_and_method(name, args, kwargs)
@@ -256,20 +267,7 @@ def wrap_client_with_coverage(client: Any, recorder: Any, test_name: str) -> Any
                             recorder.record_call(path, test_name, method)
                     return response
 
-                return tracked_method
-
-            if name == "open":
-
-                def tracked_open(*args: Any, **kwargs: Any) -> Any:
-                    response = attr(*args, **kwargs)
-                    if recorder is not None:
-                        pm = self._extract_path_and_method("OPEN", args, kwargs)
-                        if pm:
-                            path, method = pm
-                            recorder.record_call(path, test_name, method)
-                    return response
-
-                return tracked_open
+                return tracked
 
             return attr
 
