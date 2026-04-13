@@ -2,9 +2,6 @@
 
 .PHONY: ruff mypy test clean clean-all version
 
-PYPI_TOKEN := $(shell type .pypi_token 2>nul || echo "")
-TEST_PYPI_TOKEN := $(shell type .test_pypi_token 2>nul || echo "")
-
 version:
 	@uv version
 
@@ -65,15 +62,3 @@ pipeline-local: format clean test cover typeguard test-example test-example-para
 
 pipeline: format test cover typeguard test-example test-example-parallel
 
-publish: pipeline build
-	@echo "Publishing plugin..."
-	@uv publish --token $(PYPI_TOKEN)
-
-publish-test:
-	@echo "Publishing plugin to test PyPI..."
-	@echo //$(TEST_PYPI_TOKEN)//
-	@uv publish --token $(TEST_PYPI_TOKEN) --index testpypi
-
-verify-publish:
-	@echo "Verifying plugin was published to PyPI..."
-	@uv run --with pytest-api-cov --no-project -- python -c "import pytest_api_cov; print(f'Plugin verified successfully. Version: {pytest_api_cov.__version__}')"
