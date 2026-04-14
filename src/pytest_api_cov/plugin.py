@@ -228,14 +228,14 @@ def wrap_client_with_coverage(client: Any, recorder: Any, test_name: str) -> Any
                 req_method = (args[0] if args else kwargs.get("method", "GET")).upper()
                 req_url = args[1] if len(args) > 1 else kwargs.get("url")
                 if isinstance(req_url, str):
-                    return req_url.partition("?")[0], req_method
+                    return req_url if "?" not in req_url else req_url.partition("?")[0], req_method
                 return None
 
             # .get(url), .post(url), .open(url), etc. - url is first arg
             if args:
                 first = args[0]
                 if isinstance(first, str):
-                    path = first.partition("?")[0]
+                    path = first if "?" not in first else first.partition("?")[0]
                     method = kwargs.get("method", name).upper()
                     return path, ("GET" if method == "OPEN" else method)
 
@@ -248,7 +248,7 @@ def wrap_client_with_coverage(client: Any, recorder: Any, test_name: str) -> Any
             if kwargs:
                 path_kw = kwargs.get("path") or kwargs.get("url") or kwargs.get("uri")
                 if isinstance(path_kw, str):
-                    path = path_kw.partition("?")[0]
+                    path = path_kw if "?" not in path_kw else path_kw.partition("?")[0]
                     method = kwargs.get("method", name).upper()
                     return path, ("GET" if method == "OPEN" else method)
 
@@ -256,20 +256,20 @@ def wrap_client_with_coverage(client: Any, recorder: Any, test_name: str) -> Any
 
         def __getattr__(self, name: str) -> Any:
             attr = getattr(self._wrapped, name)
-            if name in self._TRACKED_NAMES:
+            if name not in self._TRACKED_NAMES:
+                return attr
 
-                def tracked(*args: Any, **kwargs: Any) -> Any:
-                    response = attr(*args, **kwargs)
-                    if recorder is not None:
-                        pm = self._extract_path_and_method(name, args, kwargs)
-                        if pm:
-                            path, method = pm
-                            recorder.record_call(path, test_name, method)
-                    return response
+            def tracked(*args: Any, **kwargs: Any) -> Any:
+                response = attr(*args, **kwargs)
+                if recorder is not None:
+                    pm = self._extract_path_and_method(name, args, kwargs)
+                    if pm:
+                        path, method = pm
+                        recorder.record_call(path, test_name, method)
+                return response
 
-                return tracked
-
-            return attr
+            object.__setattr__(self, name, tracked)
+            return tracked
 
     return CoverageWrapper(client)
 

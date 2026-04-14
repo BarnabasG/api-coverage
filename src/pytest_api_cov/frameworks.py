@@ -48,14 +48,18 @@ class FlaskAdapter(BaseAdapter):
         if recorder is None:
             return self.app.test_client()
 
+        url_adapter = None
+        if hasattr(self.app.url_map, "bind"):
+            url_adapter = self.app.url_map.bind("")
+
         class TrackingFlaskClient(FlaskClient):
             def open(self, *args: Any, **kwargs: Any) -> Any:
                 path = kwargs.get("path") or (args[0] if args else None)
                 method = kwargs.get("method", "GET").upper()
 
-                if path and hasattr(self.application.url_map, "bind"):
+                if path and url_adapter is not None:
                     try:
-                        endpoint_name, _ = self.application.url_map.bind("").match(path, method=method)
+                        endpoint_name, _ = url_adapter.match(path, method=method)
                         endpoint_rule_string = next(self.application.url_map.iter_rules(endpoint_name)).rule
                         recorder.record_call(endpoint_rule_string, test_name, method)  # type: ignore[union-attr]
                     except Exception:  # noqa: BLE001
@@ -176,29 +180,39 @@ def _unwrap_wsgi_app(app: Any) -> Any:
     return None
 
 
-def is_supported_framework(app: Any) -> bool:
-    """Check if the app is a supported framework."""
-    if app is None:
-        return False
-    try:
-        get_framework_adapter(app)
-    except TypeError:
-        return False
-    return True
-
-
-def get_framework_adapter(app: Any) -> BaseAdapter:
-    """Detect the framework and return the appropriate adapter."""
+def _detect_framework(app: Any) -> str | None:
+    """Lightweight check to detect the framework."""
     app_type = type(app).__name__
     module_name = getattr(type(app), "__module__", "").split(".")[0]
 
     if (module_name == "flask" and app_type == "Flask") or (module_name == "flask_openapi3" and app_type == "OpenAPI"):
-        return FlaskAdapter(app)
+        return "flask"
     if module_name == "fastapi" and app_type == "FastAPI":
-        return FastAPIAdapter(app)
+        return "fastapi"
     if module_name == "django" or "django" in module_name:
+        return "django"
+    return None
+
+
+def is_supported_framework(app: Any) -> bool:
+    """Check if the app is a supported framework."""
+    if app is None:
+        return False
+    return _detect_framework(app) is not None
+
+
+def get_framework_adapter(app: Any) -> BaseAdapter:
+    """Detect the framework and return the appropriate adapter."""
+    framework = _detect_framework(app)
+
+    if framework == "flask":
+        return FlaskAdapter(app)
+    if framework == "fastapi":
+        return FastAPIAdapter(app)
+    if framework == "django":
         return DjangoAdapter(app)
 
+    app_type = type(app).__name__
     raise TypeError(
         f"Unsupported application type: {app_type}. pytest-api-coverage supports Flask, FastAPI, and Django."
     )

@@ -80,6 +80,10 @@ def supports_unicode() -> bool:
 
 def get_pytest_api_cov_report_config(session_config: Any) -> ApiCoverageReportConfig:
     """Build final config by merging sources. Priority: CLI > pyproject.toml > defaults."""
+    cached = getattr(session_config, "_api_cov_config_cache", None)
+    if isinstance(cached, ApiCoverageReportConfig):
+        return cached
+
     toml_config = read_toml_config()
     cli_config = read_session_config(session_config)
 
@@ -90,4 +94,6 @@ def get_pytest_api_cov_report_config(session_config: Any) -> ApiCoverageReportCo
     elif "force_sugar" not in final_config:
         final_config["force_sugar"] = supports_unicode()
 
-    return ApiCoverageReportConfig.model_validate(final_config)
+    result = ApiCoverageReportConfig.model_validate(final_config)
+    session_config._api_cov_config_cache = result
+    return result

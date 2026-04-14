@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 
 class ApiCallRecorder(BaseModel):
@@ -72,7 +72,7 @@ class EndpointDiscovery(BaseModel):
     """Discovered API endpoints."""
 
     endpoints: list[str] = Field(default_factory=list)
-    _seen: set[str] = set()
+    _seen: set[str] = PrivateAttr(default_factory=set)
     discovery_source: str = Field(default="unknown")
 
     def model_post_init(self, _: Any, /) -> None:
