@@ -2,8 +2,23 @@
 
 from __future__ import annotations
 
+import sys
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
+
+if sys.version_info >= (3, 11):
+    from enum import StrEnum
+else:
+    from backports.strenum import StrEnum
+
+
+class SupportedFramework(StrEnum):
+    """String enum representing officially supported web frameworks."""
+
+    FLASK = "flask"
+    FASTAPI = "fastapi"
+    DJANGO = "django"
+
 
 if TYPE_CHECKING:
     from .models import ApiCallRecorder
@@ -180,18 +195,20 @@ def _unwrap_wsgi_app(app: Any) -> Any:
     return None
 
 
-def _detect_framework(app: Any) -> str | None:
+def _detect_framework(app: Any) -> SupportedFramework | None:
     """Lightweight check to detect the framework."""
     app_type = type(app).__name__
     module_name = getattr(type(app), "__module__", "").split(".")[0]
 
-    if (module_name == "flask" and app_type == "Flask") or (module_name == "flask_openapi3" and app_type == "OpenAPI"):
-        return "flask"
-    if module_name == "fastapi" and app_type == "FastAPI":
-        return "fastapi"
-    if module_name == "django" or "django" in module_name:
-        return "django"
-    return None
+    match (module_name, app_type):
+        case ("flask", "Flask") | ("flask_openapi3", "OpenAPI"):
+            return SupportedFramework.FLASK
+        case ("fastapi", "FastAPI"):
+            return SupportedFramework.FASTAPI
+        case (module, _) if module == "django" or "django" in module:
+            return SupportedFramework.DJANGO
+        case _:
+            return None
 
 
 def is_supported_framework(app: Any) -> bool:
@@ -203,16 +220,15 @@ def is_supported_framework(app: Any) -> bool:
 
 def get_framework_adapter(app: Any) -> BaseAdapter:
     """Detect the framework and return the appropriate adapter."""
-    framework = _detect_framework(app)
-
-    if framework == "flask":
-        return FlaskAdapter(app)
-    if framework == "fastapi":
-        return FastAPIAdapter(app)
-    if framework == "django":
-        return DjangoAdapter(app)
-
-    app_type = type(app).__name__
-    raise TypeError(
-        f"Unsupported application type: {app_type}. pytest-api-coverage supports Flask, FastAPI, and Django."
-    )
+    match _detect_framework(app):
+        case SupportedFramework.FLASK:
+            return FlaskAdapter(app)
+        case SupportedFramework.FASTAPI:
+            return FastAPIAdapter(app)
+        case SupportedFramework.DJANGO:
+            return DjangoAdapter(app)
+        case _:
+            app_type = type(app).__name__
+            raise TypeError(
+                f"Unsupported application type: {app_type}. pytest-api-coverage supports Flask, FastAPI, and Django."
+            )
