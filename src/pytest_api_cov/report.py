@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from functools import lru_cache
 from pathlib import Path
 from re import Pattern
 from typing import TYPE_CHECKING, Any
@@ -14,6 +15,7 @@ if TYPE_CHECKING:
     from .config import ApiCoverageReportConfig
 
 
+@lru_cache(maxsize=512)
 def endpoint_to_regex(endpoint: str) -> Pattern[str]:
     """Create a regex pattern from an endpoint by replacing dynamic segments."""
     placeholder = "___PLACEHOLDER___"

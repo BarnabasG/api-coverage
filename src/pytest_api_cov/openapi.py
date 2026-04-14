@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
-
-import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +19,14 @@ def parse_openapi_spec(path: str) -> list[str]:
 
     try:
         with spec_path.open("r", encoding="utf-8") as f:
-            spec = yaml.safe_load(f) if spec_path.suffix.lower() in (".yaml", ".yml") else json.load(f)
+            if spec_path.suffix.lower() in (".yaml", ".yml"):
+                import yaml
+
+                spec = yaml.safe_load(f)
+            else:
+                import json
+
+                spec = json.load(f)
     except Exception:
         logger.exception("Failed to parse OpenAPI spec", exc_info=True)
         return []

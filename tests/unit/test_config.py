@@ -130,7 +130,7 @@ class TestConfigMerging:
         mock_read_toml.return_value = {"fail_under": 90.0, "report_path": "toml.json"}
         mock_read_session.return_value = {"fail_under": 75.0}
 
-        mock_session_config = Mock()
+        mock_session_config = Mock(spec=["getoption"])
         final_config = get_pytest_api_cov_report_config(mock_session_config)
 
         assert final_config.fail_under == 75.0
@@ -143,7 +143,8 @@ class TestConfigMerging:
         """Pydantic model validates and sets defaults correctly."""
         mock_read_toml.return_value = {"fail_under": 90.0}
 
-        final_config = get_pytest_api_cov_report_config(Mock())
+        mock_session_config = Mock(spec=["getoption"])
+        final_config = get_pytest_api_cov_report_config(mock_session_config)
 
         assert final_config.fail_under == 90.0
         assert final_config.show_covered_endpoints is False
@@ -159,15 +160,18 @@ class TestConfigMerging:
         mock_read_toml.return_value = {}
 
         mock_read_session.return_value = {"force_sugar_disabled": True}
-        config = get_pytest_api_cov_report_config(Mock())
+        mock_session_config = Mock(spec=["getoption"])
+        config = get_pytest_api_cov_report_config(mock_session_config)
         assert config.force_sugar is False
 
         mock_read_session.return_value = {}
-        config = get_pytest_api_cov_report_config(Mock())
+        mock_session_config = Mock(spec=["getoption"])
+        config = get_pytest_api_cov_report_config(mock_session_config)
         assert config.force_sugar is True
 
         mock_read_session.return_value = {"force_sugar": False}
-        config = get_pytest_api_cov_report_config(Mock())
+        mock_session_config = Mock(spec=["getoption"])
+        config = get_pytest_api_cov_report_config(mock_session_config)
         assert config.force_sugar is False
 
     def test_pydantic_validation_error(self):
