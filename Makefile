@@ -58,7 +58,5 @@ build:
 	@uv sync
 	@uv build
 
-pipeline-local: format clean test cover typeguard test-example test-example-parallel
-
 pipeline: format test cover typeguard test-example test-example-parallel
 

@@ -30,10 +30,16 @@ class ApiCoverageReportConfig(BaseModel):
     openapi_spec: str | None = Field(None, alias="api-cov-openapi-spec")
 
 
-def read_toml_config() -> dict[str, Any]:
-    """Read the [tool.pytest_api_cov] section from pyproject.toml."""
+def read_toml_config(rootdir: Path | None = None) -> dict[str, Any]:
+    """Read the [tool.pytest_api_cov] section from pyproject.toml.
+
+    Args:
+        rootdir: Project root directory. Falls back to CWD if not provided.
+
+    """
+    toml_path = (rootdir or Path.cwd()) / "pyproject.toml"
     try:
-        with Path("pyproject.toml").open("rb") as f:
+        with toml_path.open("rb") as f:
             toml_config = tomli.load(f)
             return toml_config.get("tool", {}).get("pytest_api_cov", {})  # type: ignore[no-any-return]
     except (FileNotFoundError, tomli.TOMLDecodeError):
@@ -84,7 +90,8 @@ def get_pytest_api_cov_report_config(session_config: Any) -> ApiCoverageReportCo
     if isinstance(cached, ApiCoverageReportConfig):
         return cached
 
-    toml_config = read_toml_config()
+    rootdir = getattr(session_config, "rootpath", None) or getattr(session_config, "rootdir", None)
+    toml_config = read_toml_config(rootdir)
     cli_config = read_session_config(session_config)
 
     final_config = {**toml_config, **cli_config}
