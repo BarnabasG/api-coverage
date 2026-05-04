@@ -28,6 +28,37 @@ def contains_escape_characters(endpoint: str) -> bool:
     return ("<" in endpoint and ">" in endpoint) or ("{" in endpoint and "}" in endpoint)
 
 
+def _compile_exclusion_pattern(pat: str) -> tuple[frozenset[str] | None, Pattern[str]]:
+    """Compile a single exclusion pattern into a (methods, regex) pair."""
+    path_pattern = pat.strip()
+    methods: frozenset[str] | None = None
+    m = re.match(r"^([A-Za-z,]+)\s+(.+)$", pat)
+    if m:
+        methods = frozenset(mname.strip().upper() for mname in m.group(1).split(",") if mname.strip())
+        path_pattern = m.group(2)
+    regex = re.compile("^" + re.escape(path_pattern).replace(r"\*", ".*") + "$")
+    return methods, regex
+
+
+_CompiledPatterns = tuple[tuple[frozenset[str] | None, Pattern[str]], ...]
+
+
+@lru_cache(maxsize=128)
+def _compile_exclusion_patterns(
+    patterns: tuple[str, ...],
+) -> tuple[_CompiledPatterns | None, _CompiledPatterns | None]:
+    """Compile and cache exclusion/negation patterns.
+
+    Accepts a tuple (hashable) so the result can be cached across calls.
+    """
+    exclusion_only = [p for p in patterns if not p.startswith("!")]
+    negation_only = [p[1:] for p in patterns if p.startswith("!")]
+
+    compiled_exclusions = tuple(_compile_exclusion_pattern(p) for p in exclusion_only) if exclusion_only else None
+    compiled_negations = tuple(_compile_exclusion_pattern(p) for p in negation_only) if negation_only else None
+    return compiled_exclusions, compiled_negations
+
+
 def categorise_endpoints(
     endpoints: list[str],
     called_data: dict[str, set[str]],
@@ -47,24 +78,7 @@ def categorise_endpoints(
         compiled_exclusions = None
         compiled_negations = None
     else:
-        exclusion_only = [p for p in exclusion_patterns if not p.startswith("!")]
-        negation_only = [p[1:] for p in exclusion_patterns if p.startswith("!")]
-
-        def compile_patterns(patterns: list[str]) -> list[tuple[set[str] | None, Pattern[str]]]:
-            compiled: list[tuple[set[str] | None, Pattern[str]]] = []
-            for pat in patterns:
-                path_pattern = pat.strip()
-                methods: set[str] | None = None
-                m = re.match(r"^([A-Za-z,]+)\s+(.+)$", pat)
-                if m:
-                    methods = {mname.strip().upper() for mname in m.group(1).split(",") if mname.strip()}
-                    path_pattern = m.group(2)
-                regex = re.compile("^" + re.escape(path_pattern).replace(r"\*", ".*") + "$")
-                compiled.append((methods, regex))
-            return compiled
-
-        compiled_exclusions = compile_patterns(exclusion_only) if exclusion_only else None
-        compiled_negations = compile_patterns(negation_only) if negation_only else None
+        compiled_exclusions, compiled_negations = _compile_exclusion_patterns(tuple(exclusion_patterns))
 
     for endpoint in endpoints:
         is_excluded = False

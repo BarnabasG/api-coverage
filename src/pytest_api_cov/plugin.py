@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 def _discover_openapi_endpoints(config: ApiCoverageReportConfig, coverage_data: SessionData) -> None:
     """Discover endpoints from OpenAPI spec if configured."""
+    if coverage_data.discovery_complete:
+        return
     if not config.openapi_spec or coverage_data.discovered_endpoints.endpoints:
         return
 
@@ -29,11 +31,14 @@ def _discover_openapi_endpoints(config: ApiCoverageReportConfig, coverage_data: 
         method, path = endpoint_method.split(" ", 1)
         coverage_data.add_discovered_endpoint(path, method, "openapi_spec")
 
+    coverage_data.discovery_complete = True
     logger.info(f"> Discovered {len(endpoints)} endpoints from OpenAPI spec: {config.openapi_spec}")
 
 
 def _discover_app_endpoints(app: Any, coverage_data: SessionData, fixture_name: str) -> None:
     """Discover endpoints from the app instance."""
+    if coverage_data.discovery_complete:
+        return
     if not (app and is_supported_framework(app) and not coverage_data.discovered_endpoints.endpoints):
         return
 
@@ -46,6 +51,7 @@ def _discover_app_endpoints(app: Any, coverage_data: SessionData, fixture_name: 
             method, path = endpoint_method.split(" ", 1)
             coverage_data.add_discovered_endpoint(path, method, f"{framework_name.lower()}_adapter")
 
+        coverage_data.discovery_complete = True
         logger.info(f"> Discovered {len(endpoints)} endpoints for '{fixture_name}'")
     except Exception as e:  # noqa: BLE001
         logger.warning(f"> Failed to discover endpoints from app: {e}")
@@ -210,68 +216,75 @@ def create_coverage_fixture(fixture_name: str, existing_fixture_name: str | None
     return pytest.fixture(fixture_func)
 
 
+class CoverageWrapper:
+    """Wraps a test client to record HTTP calls for coverage tracking."""
+
+    _TRACKED_NAMES = frozenset({"get", "post", "put", "delete", "patch", "head", "options", "request", "open"})
+
+    def __init__(self, wrapped_client: Any, recorder: Any, test_name: str) -> None:
+        """Bind the client, recorder, and test name."""
+        self._wrapped = wrapped_client
+        self._recorder = recorder
+        self._test_name = test_name
+
+    def _extract_path_and_method(self, name: str, args: Any, kwargs: Any) -> tuple[str, str] | None:
+        """Pull path and HTTP method from the call arguments."""
+        # .request(method, url, ...) - method is first arg, url is second
+        if name == "request":
+            req_method = (args[0] if args else kwargs.get("method", "GET")).upper()
+            req_url = args[1] if len(args) > 1 else kwargs.get("url")
+            if isinstance(req_url, str):
+                return req_url if "?" not in req_url else req_url.partition("?")[0], req_method
+            return None
+
+        # .get(url), .post(url), .open(url), etc. - url is first arg
+        if args:
+            first = args[0]
+            if isinstance(first, str):
+                path = first if "?" not in first else first.partition("?")[0]
+                method = kwargs.get("method", name).upper()
+                return path, ("GET" if method == "OPEN" else method)
+
+            if hasattr(first, "url") and hasattr(first.url, "path"):
+                try:
+                    return first.url.path, getattr(first, "method", name).upper()
+                except Exception:  # noqa: BLE001
+                    pass
+
+        if kwargs:
+            path_kw = kwargs.get("path") or kwargs.get("url") or kwargs.get("uri")
+            if isinstance(path_kw, str):
+                path = path_kw if "?" not in path_kw else path_kw.partition("?")[0]
+                method = kwargs.get("method", name).upper()
+                return path, ("GET" if method == "OPEN" else method)
+
+        return None
+
+    def __getattr__(self, name: str) -> Any:
+        """Intercept attribute access to wrap tracked HTTP methods."""
+        attr = getattr(self._wrapped, name)
+        if name not in self._TRACKED_NAMES:
+            return attr
+
+        def tracked(*args: Any, **kwargs: Any) -> Any:
+            response = attr(*args, **kwargs)
+            if self._recorder is not None:
+                pm = self._extract_path_and_method(name, args, kwargs)
+                if pm:
+                    path, method = pm
+                    self._recorder.record_call(path, self._test_name, method)
+            return response
+
+        object.__setattr__(self, name, tracked)
+        return tracked
+
+
 def wrap_client_with_coverage(client: Any, recorder: Any, test_name: str) -> Any:
     """Wrap an existing test client with coverage tracking."""
     if client is None or recorder is None:
         return client
 
-    class CoverageWrapper:
-        def __init__(self, wrapped_client: Any) -> None:
-            self._wrapped = wrapped_client
-
-        _TRACKED_NAMES = frozenset({"get", "post", "put", "delete", "patch", "head", "options", "request", "open"})
-
-        def _extract_path_and_method(self, name: str, args: Any, kwargs: Any) -> tuple[str, str] | None:
-            """Pull path and HTTP method from the call arguments."""
-            # .request(method, url, ...) - method is first arg, url is second
-            if name == "request":
-                req_method = (args[0] if args else kwargs.get("method", "GET")).upper()
-                req_url = args[1] if len(args) > 1 else kwargs.get("url")
-                if isinstance(req_url, str):
-                    return req_url if "?" not in req_url else req_url.partition("?")[0], req_method
-                return None
-
-            # .get(url), .post(url), .open(url), etc. - url is first arg
-            if args:
-                first = args[0]
-                if isinstance(first, str):
-                    path = first if "?" not in first else first.partition("?")[0]
-                    method = kwargs.get("method", name).upper()
-                    return path, ("GET" if method == "OPEN" else method)
-
-                if hasattr(first, "url") and hasattr(first.url, "path"):
-                    try:
-                        return first.url.path, getattr(first, "method", name).upper()
-                    except Exception:  # noqa: BLE001
-                        pass
-
-            if kwargs:
-                path_kw = kwargs.get("path") or kwargs.get("url") or kwargs.get("uri")
-                if isinstance(path_kw, str):
-                    path = path_kw if "?" not in path_kw else path_kw.partition("?")[0]
-                    method = kwargs.get("method", name).upper()
-                    return path, ("GET" if method == "OPEN" else method)
-
-            return None
-
-        def __getattr__(self, name: str) -> Any:
-            attr = getattr(self._wrapped, name)
-            if name not in self._TRACKED_NAMES:
-                return attr
-
-            def tracked(*args: Any, **kwargs: Any) -> Any:
-                response = attr(*args, **kwargs)
-                if recorder is not None:
-                    pm = self._extract_path_and_method(name, args, kwargs)
-                    if pm:
-                        path, method = pm
-                        recorder.record_call(path, test_name, method)
-                return response
-
-            object.__setattr__(self, name, tracked)
-            return tracked
-
-    return CoverageWrapper(client)
+    return CoverageWrapper(client, recorder, test_name)
 
 
 def _coverage_client_impl(request: pytest.FixtureRequest) -> Any:
