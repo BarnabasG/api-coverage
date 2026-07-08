@@ -6,6 +6,7 @@ import importlib
 import re
 import sys
 from abc import ABC, abstractmethod
+from itertools import count
 from typing import TYPE_CHECKING, Any
 
 if sys.version_info >= (3, 11):
@@ -23,7 +24,12 @@ class SupportedFramework(StrEnum):
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from .models import ApiCallRecorder
+
+# Auto-added companions of GET et al. that would inflate the endpoint count.
+_SKIPPED_METHODS = frozenset({"HEAD", "OPTIONS"})
 
 
 class BaseAdapter(ABC):
@@ -61,7 +67,7 @@ class FlaskAdapter(BaseAdapter):
             for rule in self.app.url_map.iter_rules()
             if not self._is_static_rule(rule)
             for method in rule.methods
-            if method not in ("HEAD", "OPTIONS")
+            if method not in _SKIPPED_METHODS
         ]
 
         return sorted(endpoints)
@@ -76,6 +82,7 @@ class FlaskAdapter(BaseAdapter):
         if recorder is None:
             return self.app.test_client()
 
+        active_recorder = recorder
         url_adapter = None
         if hasattr(self.app.url_map, "bind"):
             url_adapter = self.app.url_map.bind("")
@@ -105,7 +112,7 @@ class FlaskAdapter(BaseAdapter):
                 if isinstance(path, str) and url_adapter is not None:
                     rule = _match_rule(path.partition("?")[0], method, bool(kwargs.get("follow_redirects")))
                     if rule is not None:
-                        recorder.record_call(rule.rule, test_name, method)  # type: ignore[union-attr]
+                        active_recorder.record_call(rule.rule, test_name, method)
                 return super().open(*args, **kwargs)
 
         return TrackingFlaskClient(self.app, self.app.response_class)
@@ -126,18 +133,12 @@ class FastAPIAdapter(BaseAdapter):
         from starlette.routing import Mount, Route
 
         for route in routes:
-            if isinstance(route, APIRoute):
-                endpoints.extend(
-                    f"{method} {prefix}{route.path}" for method in route.methods if method not in ("HEAD", "OPTIONS")
-                )
-            elif isinstance(route, Route) and not isinstance(route, Mount):
-                # Plain Starlette routes (add_route, mounted Starlette apps). The auto-generated
-                # docs routes (/docs, /openapi.json, ...) carry include_in_schema=False.
-                if not getattr(route, "include_in_schema", True):
-                    continue
+            # APIRoutes always count; plain Starlette routes count unless flagged out of
+            # the schema (the auto-generated /docs, /openapi.json, ... routes are).
+            if isinstance(route, APIRoute) or (isinstance(route, Route) and getattr(route, "include_in_schema", True)):
                 methods = route.methods or {"GET"}
                 endpoints.extend(
-                    f"{method} {prefix}{route.path}" for method in methods if method not in ("HEAD", "OPTIONS")
+                    f"{method} {prefix}{route.path}" for method in methods if method not in _SKIPPED_METHODS
                 )
             elif isinstance(route, Mount):
                 mount_prefix = prefix + route.path
@@ -158,6 +159,8 @@ class FastAPIAdapter(BaseAdapter):
         if recorder is None:
             return TestClient(self.app)
 
+        active_recorder = recorder
+
         class TrackingFastAPIClient(TestClient):
             def send(self, *args: Any, **kwargs: Any) -> Any:
                 request = args[0]
@@ -166,49 +169,47 @@ class FastAPIAdapter(BaseAdapter):
                 try:
                     response = super().send(*args, **kwargs)
                 except BaseException:
-                    if recorder is not None:
-                        recorder.record_call(original_path, test_name, method)
+                    active_recorder.record_call(original_path, test_name, method)
                     raise
-                if recorder is not None:
-                    # The requested endpoint always gets credit (it may itself be a
-                    # redirecting route); httpx follows redirects inside send(), so a
-                    # followed redirect also credits the final route it landed on.
-                    recorder.record_call(original_path, test_name, method)
-                    final_request = getattr(response, "request", None)
-                    if final_request is not None:
-                        final_path = getattr(getattr(final_request, "url", None), "path", None)
-                        if final_path and final_path != original_path:
-                            recorder.record_call(final_path, test_name, final_request.method.upper())
+                # The requested endpoint always gets credit (it may itself be a
+                # redirecting route); httpx follows redirects inside send(), so a
+                # followed redirect also credits the final route it landed on.
+                active_recorder.record_call(original_path, test_name, method)
+                final_request = getattr(response, "request", None)
+                if final_request is not None:
+                    final_path = getattr(getattr(final_request, "url", None), "path", None)
+                    if final_path and final_path != original_path:
+                        active_recorder.record_call(final_path, test_name, final_request.method.upper())
                 return response
 
         return TrackingFastAPIClient(self.app)
 
 
 _REGEX_SHORTHAND_CLASSES = frozenset("dDwWsS")
+_QUANTIFIER_PATTERN = re.compile(r"[+*?]|\{\d+(?:,\d*)?\}")
 
 
 def _consume_quantifier(route: str, i: int) -> int:
     """Return the index just past a regex quantifier starting at ``i``, if any."""
-    if i < len(route) and route[i] in "+*?":
-        return i + 1
-    if i < len(route) and route[i] == "{":
-        end = route.find("}", i)
-        if end != -1 and re.fullmatch(r"\{\d+(,\d*)?\}", route[i : end + 1]):
-            return end + 1
-    return i
+    match = _QUANTIFIER_PATTERN.match(route, i)
+    return match.end() if match else i
 
 
-def _group_placeholder(group: str, param_count: int) -> tuple[str, int]:
+def _skip_class(route: str, i: int) -> int:
+    """Return the index of the ']' closing the character class opened at ``route[i]``."""
+    j = i + 1
+    while j < len(route) and route[j] != "]":
+        j += 2 if route[j] == "\\" else 1
+    return j
+
+
+def _group_placeholder(group: str, next_param: Callable[[], str]) -> str:
     """Choose a placeholder for a regex group; bodies that can span '/' get a path converter."""
     named = re.match(r"\(\?P<(\w+)>", group)
     body = group[named.end() : -1] if named else group[1:-1]
     multi_segment = "/" in body or re.search(r"(?<!\\)\.", body) is not None or "\\S" in body
-    if named:
-        name = named.group(1)
-    else:
-        param_count += 1
-        name = f"param{param_count}"
-    return (f"<path:{name}>" if multi_segment else f"<{name}>"), param_count
+    name = named.group(1) if named else next_param()
+    return f"<path:{name}>" if multi_segment else f"<{name}>"
 
 
 def _django_route_to_template(route: str) -> str:
@@ -223,15 +224,18 @@ def _django_route_to_template(route: str) -> str:
     """
     out: list[str] = []
     i = 0
-    param_count = 0
     n = len(route)
+    param_counter = count(1)
+
+    def next_param() -> str:
+        return f"param{next(param_counter)}"
+
     while i < n:
         char = route[i]
         if char == "\\" and i + 1 < n:
             escaped = route[i + 1]
             if escaped in _REGEX_SHORTHAND_CLASSES:
-                param_count += 1
-                out.append(f"<param{param_count}>")
+                out.append(f"<{next_param()}>")
                 i = _consume_quantifier(route, i + 2)
             else:
                 out.append(escaped)
@@ -239,16 +243,13 @@ def _django_route_to_template(route: str) -> str:
         elif char == "(":
             depth = 0
             j = i
-            in_class = False
             while j < n:
                 inner = route[j]
                 if inner == "\\":
                     j += 2
                     continue
-                if in_class:
-                    in_class = inner != "]"
-                elif inner == "[":
-                    in_class = True
+                if inner == "[":
+                    j = _skip_class(route, j)
                 elif inner == "(":
                     depth += 1
                 elif inner == ")":
@@ -256,21 +257,16 @@ def _django_route_to_template(route: str) -> str:
                     if depth == 0:
                         break
                 j += 1
-            placeholder, param_count = _group_placeholder(route[i : j + 1], param_count)
-            out.append(placeholder)
+            out.append(_group_placeholder(route[i : j + 1], next_param))
             i = _consume_quantifier(route, j + 1)
         elif char == "[":
-            j = i + 1
-            while j < n and route[j] != "]":
-                j += 2 if route[j] == "\\" else 1
-            param_count += 1
-            out.append(f"<param{param_count}>")
+            j = _skip_class(route, i)
+            out.append(f"<{next_param()}>")
             i = _consume_quantifier(route, j + 1)
         elif char == ".":
             end = _consume_quantifier(route, i + 1)
-            param_count += 1
             # A quantified dot (.* / .+) can cross path segments.
-            out.append(f"<path:param{param_count}>" if end > i + 1 else f"<param{param_count}>")
+            out.append(f"<path:{next_param()}>" if end > i + 1 else f"<{next_param()}>")
             i = end
         elif char in "+*?":
             # Bare quantifier on the preceding literal (e.g. a trailing '/?'): drop it.
@@ -305,12 +301,12 @@ class DjangoAdapter(BaseAdapter):
                         # Only count methods the class actually implements (mirrors
                         # View._allowed_methods), not the full http_method_names list.
                         implemented = {m.upper() for m in view_class.http_method_names if hasattr(view_class, m)}
-                        if implemented - {"HEAD", "OPTIONS"}:
+                        if implemented - _SKIPPED_METHODS:
                             methods = implemented
                         # else: dispatch()-only view — keep the default set so the
                         # endpoint stays discoverable at all.
 
-                    endpoints.extend(f"{method} {full_path}" for method in methods if method not in ("HEAD", "OPTIONS"))
+                    endpoints.extend(f"{method} {full_path}" for method in methods if method not in _SKIPPED_METHODS)
 
                 elif isinstance(pattern, URLResolver):
                     route = _django_route_to_template(str(pattern.pattern).strip("^$"))
@@ -326,13 +322,14 @@ class DjangoAdapter(BaseAdapter):
         if recorder is None:
             return Client()
 
+        active_recorder = recorder
+
         class TrackingDjangoClient(Client):  # type: ignore[misc]
             def request(self, **request: Any) -> Any:
                 method = request.get("REQUEST_METHOD", "GET").upper()
                 path = request.get("PATH_INFO", "/")
 
-                if recorder is not None:
-                    recorder.record_call(path, test_name, method)
+                active_recorder.record_call(path, test_name, method)
 
                 return super().request(**request)
 
@@ -377,25 +374,17 @@ def _optional_class(module_name: str, attr: str) -> type[Any] | None:
     return cls if isinstance(cls, type) else None
 
 
-def _detect_by_isinstance(app: Any) -> SupportedFramework | None:
-    """Detect framework apps (including subclasses) via isinstance checks."""
-    for framework, module_name, attr in _FRAMEWORK_CLASS_SPECS:
-        framework_class = _optional_class(module_name, attr)
-        if framework_class is not None and isinstance(app, framework_class):
-            return framework
-    return None
-
-
 def _detect_framework(app: Any) -> SupportedFramework | None:
     """Detect the framework, supporting app subclasses via isinstance checks."""
     if app is None:
         return None
 
-    framework = _detect_by_isinstance(app)
-    if framework is not None:
-        return framework
+    for framework, module_name, attr in _FRAMEWORK_CLASS_SPECS:
+        framework_class = _optional_class(module_name, attr)
+        if framework_class is not None and isinstance(app, framework_class):
+            return framework
 
-    # Name-based fallback for Django handlers and duck-typed apps.
+    # Name-based fallback for duck-typed apps (e.g. mocks in test suites).
     app_type = type(app).__name__
     module_name = getattr(type(app), "__module__", "").split(".")[0]
 
@@ -412,8 +401,6 @@ def _detect_framework(app: Any) -> SupportedFramework | None:
 
 def is_supported_framework(app: Any) -> bool:
     """Check if the app is a supported framework."""
-    if app is None:
-        return False
     return _detect_framework(app) is not None
 
 

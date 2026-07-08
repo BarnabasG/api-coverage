@@ -28,7 +28,7 @@ def parse_openapi_spec(path: str) -> list[str]:
 
                 spec = json.load(f)
     except Exception:
-        logger.exception("Failed to parse OpenAPI spec", exc_info=True)
+        logger.exception("Failed to parse OpenAPI spec")
         return []
 
     if not isinstance(spec, dict):

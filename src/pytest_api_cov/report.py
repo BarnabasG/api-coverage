@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from .config import ApiCoverageReportConfig
 
 
-@lru_cache(maxsize=512)
+@lru_cache(maxsize=None)
 def endpoint_to_regex(endpoint: str) -> Pattern[str]:
     """Create a regex pattern from an endpoint by replacing dynamic segments.
 
@@ -42,6 +42,14 @@ def contains_escape_characters(endpoint: str) -> bool:
     return ("<" in endpoint and ">" in endpoint) or ("{" in endpoint and "}" in endpoint)
 
 
+def _split_endpoint(endpoint: str) -> tuple[str | None, str]:
+    """Split 'METHOD /path' into (METHOD, path); method is None when absent."""
+    if " " in endpoint:
+        method, path = endpoint.split(" ", 1)
+        return method.upper(), path
+    return None, endpoint
+
+
 def _compile_exclusion_pattern(pat: str) -> tuple[frozenset[str] | None, Pattern[str]]:
     """Compile a single exclusion pattern into a (methods, regex) pair."""
     path_pattern = pat.strip()
@@ -60,17 +68,55 @@ _CompiledPatterns = tuple[tuple[frozenset[str] | None, Pattern[str]], ...]
 @lru_cache(maxsize=128)
 def _compile_exclusion_patterns(
     patterns: tuple[str, ...],
-) -> tuple[_CompiledPatterns | None, _CompiledPatterns | None]:
+) -> tuple[_CompiledPatterns, _CompiledPatterns]:
     """Compile and cache exclusion/negation patterns.
 
     Accepts a tuple (hashable) so the result can be cached across calls.
     """
-    exclusion_only = [p for p in patterns if not p.startswith("!")]
-    negation_only = [p[1:] for p in patterns if p.startswith("!")]
+    exclusions = tuple(_compile_exclusion_pattern(p) for p in patterns if not p.startswith("!"))
+    negations = tuple(_compile_exclusion_pattern(p[1:]) for p in patterns if p.startswith("!"))
+    return exclusions, negations
 
-    compiled_exclusions = tuple(_compile_exclusion_pattern(p) for p in exclusion_only) if exclusion_only else None
-    compiled_negations = tuple(_compile_exclusion_pattern(p) for p in negation_only) if negation_only else None
-    return compiled_exclusions, compiled_negations
+
+def _matches_any(compiled: _CompiledPatterns, method: str | None, path_only: str, endpoint: str) -> bool:
+    """Check an endpoint against compiled (methods, regex) patterns."""
+    for methods_set, regex in compiled:
+        if methods_set and (not method or method not in methods_set):
+            continue
+        if regex.match(path_only) or regex.match(endpoint):
+            return True
+    return False
+
+
+def _partition_excluded(endpoints: list[str], exclusion_patterns: list[str]) -> tuple[list[str], list[str]]:
+    """Split endpoints into (kept, excluded); negation patterns override exclusions."""
+    if not exclusion_patterns:
+        return list(endpoints), []
+
+    compiled_exclusions, compiled_negations = _compile_exclusion_patterns(tuple(exclusion_patterns))
+    kept: list[str] = []
+    excluded: list[str] = []
+    for endpoint in endpoints:
+        method, path_only = _split_endpoint(endpoint)
+        is_excluded = _matches_any(compiled_exclusions, method, path_only, endpoint) and not _matches_any(
+            compiled_negations, method, path_only, endpoint
+        )
+        (excluded if is_excluded else kept).append(endpoint)
+    return kept, excluded
+
+
+def _match_covered(endpoints: list[str], called_data: dict[str, set[str]]) -> tuple[list[str], list[str]]:
+    """Split endpoints into (covered, uncovered) against the recorded call keys."""
+    covered: list[str] = []
+    uncovered: list[str] = []
+    for endpoint in endpoints:
+        if contains_escape_characters(endpoint):
+            pattern = endpoint_to_regex(endpoint)
+            is_covered = any(pattern.match(ep) for ep in called_data)
+        else:
+            is_covered = endpoint in called_data
+        (covered if is_covered else uncovered).append(endpoint)
+    return covered, uncovered
 
 
 def categorise_endpoints(
@@ -84,57 +130,8 @@ def categorise_endpoints(
     HTTP method prefixes. Pattern order matters: exclusions first, then
     negations override them.
     """
-    covered: list[str] = []
-    uncovered: list[str] = []
-    excluded: list[str] = []
-
-    if not exclusion_patterns:
-        compiled_exclusions = None
-        compiled_negations = None
-    else:
-        compiled_exclusions, compiled_negations = _compile_exclusion_patterns(tuple(exclusion_patterns))
-
-    for endpoint in endpoints:
-        is_excluded = False
-        endpoint_method = None
-        path_only = endpoint
-        if " " in endpoint:
-            endpoint_method, path_only = endpoint.split(" ", 1)
-            endpoint_method = endpoint_method.upper()
-
-        if compiled_exclusions:
-            for methods_set, regex in compiled_exclusions:
-                if methods_set:
-                    if not endpoint_method or endpoint_method not in methods_set:
-                        continue
-                    if regex.match(path_only) or regex.match(endpoint):
-                        is_excluded = True
-                        break
-                elif regex.match(path_only) or regex.match(endpoint):
-                    is_excluded = True
-                    break
-
-        if is_excluded and compiled_negations:
-            for methods_set, regex in compiled_negations:
-                if methods_set:
-                    if not endpoint_method or endpoint_method not in methods_set:
-                        continue
-                    if regex.match(path_only) or regex.match(endpoint):
-                        is_excluded = False
-                        break
-                elif regex.match(path_only) or regex.match(endpoint):
-                    is_excluded = False
-                    break
-
-        if is_excluded:
-            excluded.append(endpoint)
-            continue
-        if contains_escape_characters(endpoint):
-            pattern = endpoint_to_regex(endpoint)
-            is_covered = any(pattern.match(ep) for ep in called_data)
-        else:
-            is_covered = endpoint in called_data
-        covered.append(endpoint) if is_covered else uncovered.append(endpoint)
+    kept, excluded = _partition_excluded(endpoints, exclusion_patterns)
+    covered, uncovered = _match_covered(kept, called_data)
     return covered, uncovered, excluded
 
 
@@ -143,18 +140,11 @@ def group_endpoints_by_path(
     called_data: dict[str, set[str]],
 ) -> tuple[list[str], dict[str, set[str]]]:
     """Collapse 'METHOD /path' keys to '/path', merging caller sets across methods."""
-    grouped_endpoints: list[str] = []
-    seen: set[str] = set()
-    for endpoint in endpoints:
-        path = endpoint.split(" ", 1)[1] if " " in endpoint else endpoint
-        if path not in seen:
-            seen.add(path)
-            grouped_endpoints.append(path)
+    grouped_endpoints = list(dict.fromkeys(_split_endpoint(endpoint)[1] for endpoint in endpoints))
 
     grouped_calls: dict[str, set[str]] = {}
     for key, callers in called_data.items():
-        path = key.split(" ", 1)[1] if " " in key else key
-        grouped_calls.setdefault(path, set()).update(callers)
+        grouped_calls.setdefault(_split_endpoint(key)[1], set()).update(callers)
 
     return grouped_endpoints, grouped_calls
 
@@ -227,20 +217,14 @@ def generate_pytest_api_cov_report(
         console.print("\n[bold red]No endpoints discovered. Please check your test setup.[/bold red]")
         return 0
 
-    separator = "=" * 20
-    console.print(f"\n\n[bold blue]{separator} API Coverage Report {separator}[/bold blue]")
+    header = f"{'=' * 20} API Coverage Report {'=' * 20}"
+    console.print(f"\n\n[bold blue]{header}[/bold blue]")
 
+    kept, excluded = _partition_excluded(discovered_endpoints, api_cov_config.exclusion_patterns)
     if api_cov_config.group_methods_by_endpoint:
-        # Apply (possibly method-scoped) exclusions before collapsing methods away.
-        _, kept, excluded = categorise_endpoints(discovered_endpoints, {}, api_cov_config.exclusion_patterns)
-        grouped_endpoints, called_data = group_endpoints_by_path(kept, called_data)
-        covered, uncovered, _ = categorise_endpoints(grouped_endpoints, called_data, [])
-    else:
-        covered, uncovered, excluded = categorise_endpoints(
-            discovered_endpoints,
-            called_data,
-            api_cov_config.exclusion_patterns,
-        )
+        # Exclusions (possibly method-scoped) apply before methods are collapsed away.
+        kept, called_data = group_endpoints_by_path(kept, called_data)
+    covered, uncovered = _match_covered(kept, called_data)
 
     if api_cov_config.show_uncovered_endpoints:
         print_endpoints(
@@ -316,5 +300,5 @@ def generate_pytest_api_cov_report(
         write_report_file(final_report, api_cov_config.report_path)
         console.print(f"\n[grey50]JSON report saved to {api_cov_config.report_path}[/grey50]")
 
-    console.print(f"[bold blue]{'=' * (42 + len(' API Coverage Report '))}[/bold blue]\n")
+    console.print(f"[bold blue]{'=' * len(header)}[/bold blue]\n")
     return status

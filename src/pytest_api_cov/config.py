@@ -9,6 +9,8 @@ from typing import Any
 import tomli
 from pydantic import BaseModel, ConfigDict, Field
 
+DEFAULT_CLIENT_FIXTURE_NAMES = ("client", "test_client", "api_client", "app_client")
+
 
 class ApiCoverageReportConfig(BaseModel):
     """Configuration model for API coverage reporting."""
@@ -24,7 +26,7 @@ class ApiCoverageReportConfig(BaseModel):
     force_sugar: bool = Field(default=False, alias="api-cov-force-sugar")
     force_sugar_disabled: bool = Field(default=False, alias="api-cov-force-sugar-disabled")
     client_fixture_names: list[str] = Field(
-        ["client", "test_client", "api_client", "app_client"], alias="api-cov-client-fixture-names"
+        default_factory=lambda: list(DEFAULT_CLIENT_FIXTURE_NAMES), alias="api-cov-client-fixture-names"
     )
     group_methods_by_endpoint: bool = Field(default=False, alias="api-cov-group-methods-by-endpoint")
     openapi_spec: str | None = Field(None, alias="api-cov-openapi-spec")
