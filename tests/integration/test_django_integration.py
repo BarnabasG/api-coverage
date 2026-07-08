@@ -74,11 +74,16 @@ def test_django_cbv_methods_and_re_path_templates(pytester):
             def get(self, request):
                 return JsonResponse({"ok": True})
 
+        class DispatchOnlyView(View):
+            def dispatch(self, request, *args, **kwargs):
+                return JsonResponse({"ok": True})
+
         def year_view(request, year):
             return JsonResponse({"year": year})
 
         urlpatterns = [
             path("only-get/", GetOnlyView.as_view()),
+            path("dispatch-only/", DispatchOnlyView.as_view()),
             re_path(r"^articles/(?P<year>[0-9]{4})/$", year_view),
         ]
     """
@@ -119,5 +124,7 @@ def test_django_cbv_methods_and_re_path_templates(pytester):
     # CBVs only count implemented handlers; FBVs keep the 5-method default.
     assert "POST   /only-get/" not in output
     assert "POST   /articles/<year>/" in output
-    assert "Total API Coverage: 16.67%" in output
+    # Dispatch-only CBVs stay discoverable with the default method set.
+    assert "GET    /dispatch-only/" in output
+    assert "Total API Coverage: 9.09%" in output
     assert result.ret == 0

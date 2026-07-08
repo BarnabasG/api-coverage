@@ -399,12 +399,45 @@ class TestGroupingAndDegenerateCases:
 
     @patch("pytest_api_cov.report.Console")
     def test_generate_report_fail_under_with_all_endpoints_excluded(self, mock_console_cls):
-        """Excluding every endpoint makes the gate vacuous rather than a spurious failure."""
+        """A real threshold fails closed when exclusions leave nothing measurable."""
         mock_console = mock_console_cls.return_value
         config = ApiCoverageReportConfig.model_validate({"fail_under": 80.0, "exclusion_patterns": ["*"]})
 
         status = generate_pytest_api_cov_report(config, {}, ["GET /a", "GET /b"])
 
+        assert status == 1
+        fail_print = next(c for c in mock_console.print.call_args_list if "FAIL" in c.args[0])
+        assert "All 2 discovered endpoints are excluded" in fail_print.args[0]
+
+    @patch("pytest_api_cov.report.Console")
+    def test_generate_report_fail_under_zero_with_all_endpoints_excluded(self, mock_console_cls):
+        """An explicit 0% threshold is trivially met even when everything is excluded."""
+        config = ApiCoverageReportConfig.model_validate({"fail_under": 0.0, "exclusion_patterns": ["*"]})
+
+        status = generate_pytest_api_cov_report(config, {}, ["GET /a"])
+
         assert status == 0
-        note_print = next(c for c in mock_console.print.call_args_list if "excluded" in c.args[0])
-        assert "coverage requirement not applied" in note_print.args[0]
+
+    @patch("pytest_api_cov.report.Console")
+    def test_generate_report_fail_under_zero_with_no_endpoints(self, mock_console_cls):
+        """An explicit 0% threshold does not hard-fail on empty discovery."""
+        config = ApiCoverageReportConfig.model_validate({"fail_under": 0.0})
+
+        status = generate_pytest_api_cov_report(config, {}, [])
+
+        assert status == 0
+
+    @patch("pytest_api_cov.report.Console")
+    def test_method_scoped_exclusions_apply_before_grouping(self, mock_console_cls):
+        """Method-scoped exclusion patterns still work with group-methods-by-endpoint."""
+        config = ApiCoverageReportConfig.model_validate(
+            {
+                "group_methods_by_endpoint": True,
+                "exclusion_patterns": ["GET /health"],
+                "fail_under": 100.0,
+            }
+        )
+
+        status = generate_pytest_api_cov_report(config, {"GET /api": {"t"}}, ["GET /health", "GET /api"])
+
+        assert status == 0

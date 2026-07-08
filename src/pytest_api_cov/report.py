@@ -217,7 +217,8 @@ def generate_pytest_api_cov_report(
     console = Console()
 
     if not discovered_endpoints:
-        if api_cov_config.fail_under is not None:
+        # A truthy threshold (> 0) cannot be met without endpoints; an explicit 0 can.
+        if api_cov_config.fail_under:
             console.print(
                 f"\n[bold red]FAIL: No endpoints discovered but --api-cov-fail-under={api_cov_config.fail_under} "
                 "is set. Check your app/client fixtures or OpenAPI spec.[/bold red]"
@@ -230,13 +231,16 @@ def generate_pytest_api_cov_report(
     console.print(f"\n\n[bold blue]{separator} API Coverage Report {separator}[/bold blue]")
 
     if api_cov_config.group_methods_by_endpoint:
-        discovered_endpoints, called_data = group_endpoints_by_path(discovered_endpoints, called_data)
-
-    covered, uncovered, excluded = categorise_endpoints(
-        discovered_endpoints,
-        called_data,
-        api_cov_config.exclusion_patterns,
-    )
+        # Apply (possibly method-scoped) exclusions before collapsing methods away.
+        _, kept, excluded = categorise_endpoints(discovered_endpoints, {}, api_cov_config.exclusion_patterns)
+        grouped_endpoints, called_data = group_endpoints_by_path(kept, called_data)
+        covered, uncovered, _ = categorise_endpoints(grouped_endpoints, called_data, [])
+    else:
+        covered, uncovered, excluded = categorise_endpoints(
+            discovered_endpoints,
+            called_data,
+            api_cov_config.exclusion_patterns,
+        )
 
     if api_cov_config.show_uncovered_endpoints:
         print_endpoints(
@@ -271,11 +275,20 @@ def generate_pytest_api_cov_report(
     if api_cov_config.fail_under is None:
         console.print(f"\n[bold green]Total API Coverage: {coverage}%[/bold green]")
     elif not covered and not uncovered:
-        # Every endpoint was excluded: nothing is measurable, so the gate is vacuous.
-        console.print(
-            f"\n[bold yellow]All {len(excluded)} discovered endpoints are excluded; "
-            "coverage requirement not applied.[/bold yellow]"
-        )
+        # Every endpoint was excluded: nothing is measurable. Fail closed when a
+        # real threshold is set, so an over-broad pattern cannot disable the gate.
+        if api_cov_config.fail_under:
+            console.print(
+                f"\n[bold red]FAIL: All {len(excluded)} discovered endpoints are excluded, so no coverage "
+                f"can be measured against the requirement of {api_cov_config.fail_under}%. "
+                "Loosen the exclusion patterns or remove fail_under.[/bold red]"
+            )
+            status = 1
+        else:
+            console.print(
+                f"\n[bold yellow]All {len(excluded)} discovered endpoints are excluded; "
+                "coverage requirement of 0% is trivially met.[/bold yellow]"
+            )
     elif coverage < api_cov_config.fail_under:
         console.print(
             f"\n[bold red]FAIL: Required coverage of {api_cov_config.fail_under}% not met. "

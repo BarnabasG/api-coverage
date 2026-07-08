@@ -253,3 +253,47 @@ class TestDjangoRouteToTemplate:
         from pytest_api_cov.frameworks import _django_route_to_template
 
         assert _django_route_to_template("articles/<int:year>/") == "articles/<int:year>/"
+
+    def test_shorthand_class_outside_group_becomes_placeholder(self):
+        from pytest_api_cov.frameworks import _django_route_to_template
+
+        assert _django_route_to_template(r"v\d+/users/") == "v<param1>/users/"
+
+    def test_bare_character_class_becomes_placeholder(self):
+        from pytest_api_cov.frameworks import _django_route_to_template
+
+        assert _django_route_to_template("v[0-9]+/users/") == "v<param1>/users/"
+
+    def test_multi_segment_group_gets_path_converter(self):
+        from pytest_api_cov.frameworks import _django_route_to_template
+
+        assert _django_route_to_template("files/(?P<rest>.*)") == "files/<path:rest>"
+
+    def test_trailing_optional_slash_quantifier_is_dropped(self):
+        from pytest_api_cov.frameworks import _django_route_to_template
+
+        assert _django_route_to_template(r"articles/(?P<slug>[\w-]+)/?") == "articles/<slug>/"
+
+    def test_failed_framework_import_is_probed_only_once(self, monkeypatch):
+        import pytest_api_cov.frameworks as frameworks
+
+        calls = []
+
+        def counting_import(name, *args, **kwargs):
+            calls.append(name)
+            raise ImportError(name)
+
+        monkeypatch.setattr(frameworks.importlib, "import_module", counting_import)
+        monkeypatch.setattr(frameworks, "_import_failed", set())
+
+        assert frameworks._optional_class("not_a_real_framework_xyz", "App") is None
+        assert frameworks._optional_class("not_a_real_framework_xyz", "App") is None
+        assert calls.count("not_a_real_framework_xyz") == 1
+
+    def test_optional_class_resolves_current_module_object(self):
+        import sys
+
+        from pytest_api_cov.frameworks import _optional_class
+
+        flask_class = _optional_class("flask", "Flask")
+        assert flask_class is sys.modules["flask"].Flask

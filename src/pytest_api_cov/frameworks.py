@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import re
 import sys
 from abc import ABC, abstractmethod
@@ -46,9 +47,12 @@ class FlaskAdapter(BaseAdapter):
 
     @staticmethod
     def _is_static_rule(rule: Any) -> bool:
-        """Match app and blueprint static rules by endpoint name, covering custom static_url_path."""
+        """Match app and blueprint static-file rules without dropping user routes sharing the name."""
         endpoint = str(getattr(rule, "endpoint", ""))
-        return endpoint == "static" or endpoint.endswith(".static")
+        if endpoint != "static" and not endpoint.endswith(".static"):
+            return False
+        # Framework static rules always end in the filename path converter.
+        return str(getattr(rule, "rule", "")).endswith("/<path:filename>")
 
     def get_endpoints(self) -> list[str]:
         """Return list of 'METHOD /path' strings."""
@@ -157,28 +161,65 @@ class FastAPIAdapter(BaseAdapter):
         class TrackingFastAPIClient(TestClient):
             def send(self, *args: Any, **kwargs: Any) -> Any:
                 request = args[0]
+                method = request.method.upper()
+                original_path = request.url.path
                 try:
                     response = super().send(*args, **kwargs)
                 except BaseException:
                     if recorder is not None:
-                        recorder.record_call(request.url.path, test_name, request.method.upper())
+                        recorder.record_call(original_path, test_name, method)
                     raise
                 if recorder is not None:
-                    # httpx follows redirects inside send(); response.request points at the
-                    # final request, so followed slash-redirects record the real route path.
-                    final_request = getattr(response, "request", request)
-                    recorder.record_call(final_request.url.path, test_name, final_request.method.upper())
+                    # The requested endpoint always gets credit (it may itself be a
+                    # redirecting route); httpx follows redirects inside send(), so a
+                    # followed redirect also credits the final route it landed on.
+                    recorder.record_call(original_path, test_name, method)
+                    final_request = getattr(response, "request", None)
+                    if final_request is not None:
+                        final_path = getattr(getattr(final_request, "url", None), "path", None)
+                        if final_path and final_path != original_path:
+                            recorder.record_call(final_path, test_name, final_request.method.upper())
                 return response
 
         return TrackingFastAPIClient(self.app)
 
 
+_REGEX_SHORTHAND_CLASSES = frozenset("dDwWsS")
+
+
+def _consume_quantifier(route: str, i: int) -> int:
+    """Return the index just past a regex quantifier starting at ``i``, if any."""
+    if i < len(route) and route[i] in "+*?":
+        return i + 1
+    if i < len(route) and route[i] == "{":
+        end = route.find("}", i)
+        if end != -1 and re.fullmatch(r"\{\d+(,\d*)?\}", route[i : end + 1]):
+            return end + 1
+    return i
+
+
+def _group_placeholder(group: str, param_count: int) -> tuple[str, int]:
+    """Choose a placeholder for a regex group; bodies that can span '/' get a path converter."""
+    named = re.match(r"\(\?P<(\w+)>", group)
+    body = group[named.end() : -1] if named else group[1:-1]
+    multi_segment = "/" in body or re.search(r"(?<!\\)\.", body) is not None or "\\S" in body
+    if named:
+        name = named.group(1)
+    else:
+        param_count += 1
+        name = f"param{param_count}"
+    return (f"<path:{name}>" if multi_segment else f"<{name}>"), param_count
+
+
 def _django_route_to_template(route: str) -> str:
     r"""Convert a Django route string to a matchable template.
 
-    ``path()`` routes pass through unchanged; ``re_path()`` regex groups
-    (``(?P<year>[0-9]{4})``) become ``<year>`` placeholders and escaped
-    literals (``\.``) are unescaped so recorded request paths can match.
+    ``path()`` routes pass through unchanged. In ``re_path()`` regexes, groups
+    (``(?P<year>[0-9]{4})``), shorthand classes (``\d+``), bare character
+    classes (``[0-9]+``) and bare dots become placeholders (``path:`` variants
+    when the pattern can span ``/``); escaped literals (``\.``) are unescaped
+    and bare quantifiers (a trailing ``/?``) are dropped, so recorded request
+    paths can match the template.
     """
     out: list[str] = []
     i = 0
@@ -187,8 +228,14 @@ def _django_route_to_template(route: str) -> str:
     while i < n:
         char = route[i]
         if char == "\\" and i + 1 < n:
-            out.append(route[i + 1])
-            i += 2
+            escaped = route[i + 1]
+            if escaped in _REGEX_SHORTHAND_CLASSES:
+                param_count += 1
+                out.append(f"<param{param_count}>")
+                i = _consume_quantifier(route, i + 2)
+            else:
+                out.append(escaped)
+                i += 2
         elif char == "(":
             depth = 0
             j = i
@@ -209,13 +256,25 @@ def _django_route_to_template(route: str) -> str:
                     if depth == 0:
                         break
                 j += 1
-            named = re.match(r"\(\?P<(\w+)>", route[i : j + 1])
-            if named:
-                out.append(f"<{named.group(1)}>")
-            else:
-                param_count += 1
-                out.append(f"<param{param_count}>")
-            i = j + 1
+            placeholder, param_count = _group_placeholder(route[i : j + 1], param_count)
+            out.append(placeholder)
+            i = _consume_quantifier(route, j + 1)
+        elif char == "[":
+            j = i + 1
+            while j < n and route[j] != "]":
+                j += 2 if route[j] == "\\" else 1
+            param_count += 1
+            out.append(f"<param{param_count}>")
+            i = _consume_quantifier(route, j + 1)
+        elif char == ".":
+            end = _consume_quantifier(route, i + 1)
+            param_count += 1
+            # A quantified dot (.* / .+) can cross path segments.
+            out.append(f"<path:param{param_count}>" if end > i + 1 else f"<param{param_count}>")
+            i = end
+        elif char in "+*?":
+            # Bare quantifier on the preceding literal (e.g. a trailing '/?'): drop it.
+            i += 1
         else:
             out.append(char)
             i += 1
@@ -245,7 +304,11 @@ class DjangoAdapter(BaseAdapter):
                     if view_class is not None and hasattr(view_class, "http_method_names"):
                         # Only count methods the class actually implements (mirrors
                         # View._allowed_methods), not the full http_method_names list.
-                        methods = {m.upper() for m in view_class.http_method_names if hasattr(view_class, m)}
+                        implemented = {m.upper() for m in view_class.http_method_names if hasattr(view_class, m)}
+                        if implemented - {"HEAD", "OPTIONS"}:
+                            methods = implemented
+                        # else: dispatch()-only view — keep the default set so the
+                        # endpoint stays discoverable at all.
 
                     endpoints.extend(f"{method} {full_path}" for method in methods if method not in ("HEAD", "OPTIONS"))
 
@@ -286,24 +349,40 @@ def _unwrap_wsgi_app(app: Any) -> Any:
     return None
 
 
+_FRAMEWORK_CLASS_SPECS: tuple[tuple[SupportedFramework, str, str], ...] = (
+    (SupportedFramework.FLASK, "flask", "Flask"),
+    (SupportedFramework.FASTAPI, "fastapi", "FastAPI"),
+    (SupportedFramework.DJANGO, "django.core.handlers.base", "BaseHandler"),
+)
+
+_import_failed: set[str] = set()
+
+
+def _optional_class(module_name: str, attr: str) -> type[Any] | None:
+    """Resolve a class from an optional dependency.
+
+    Resolves through sys.modules so reloaded modules stay consistent, and
+    remembers failed imports so missing frameworks are only probed once.
+    """
+    if module_name in _import_failed:
+        return None
+    module = sys.modules.get(module_name)
+    if module is None:
+        try:
+            module = importlib.import_module(module_name)
+        except ImportError:
+            _import_failed.add(module_name)
+            return None
+    cls = getattr(module, attr, None)
+    return cls if isinstance(cls, type) else None
+
+
 def _detect_by_isinstance(app: Any) -> SupportedFramework | None:
-    """Detect Flask/FastAPI apps (including subclasses) via isinstance checks."""
-    try:
-        from flask import Flask
-
-        if isinstance(app, Flask):
-            return SupportedFramework.FLASK
-    except ImportError:
-        pass
-
-    try:
-        from fastapi import FastAPI
-
-        if isinstance(app, FastAPI):
-            return SupportedFramework.FASTAPI
-    except ImportError:
-        pass
-
+    """Detect framework apps (including subclasses) via isinstance checks."""
+    for framework, module_name, attr in _FRAMEWORK_CLASS_SPECS:
+        framework_class = _optional_class(module_name, attr)
+        if framework_class is not None and isinstance(app, framework_class):
+            return framework
     return None
 
 

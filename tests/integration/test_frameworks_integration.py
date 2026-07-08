@@ -357,5 +357,64 @@ class TestFastAPIRouteDiscoveryRegressions:
         response = client.get("/items", follow_redirects=True)
 
         assert response.status_code == 200
+        # Both the requested path and the redirect target get credit.
         assert "GET /items/" in recorder
-        assert "GET /items" not in recorder
+        assert "GET /items" in recorder
+
+    def test_redirecting_endpoint_keeps_its_own_coverage_credit(self):
+        """A route that returns RedirectResponse is itself recorded as covered."""
+        try:
+            from fastapi import FastAPI
+            from fastapi.responses import RedirectResponse
+        except ImportError:
+            pytest.skip("FastAPI not available for integration testing")
+
+        app = FastAPI()
+
+        @app.get("/old")
+        def old():
+            return RedirectResponse("/new")
+
+        @app.get("/new")
+        def new():
+            return {"ok": True}
+
+        recorder = ApiCallRecorder()
+        client = FastAPIAdapter(app).get_tracked_client(recorder, "test_redirect_source")
+
+        response = client.get("/old", follow_redirects=True)
+
+        assert response.status_code == 200
+        assert "GET /old" in recorder
+        assert "GET /new" in recorder
+
+    def test_user_route_with_static_endpoint_name_is_kept(self):
+        """A real Flask route whose endpoint name ends in '.static' must not be dropped."""
+        try:
+            from flask import Flask
+        except ImportError:
+            pytest.skip("Flask not available for integration testing")
+
+        app = Flask(__name__, static_folder=None)
+        app.add_url_rule("/assets/report", endpoint="docs.static", view_func=lambda: "hi")
+
+        endpoints = FlaskAdapter(app).get_endpoints()
+
+        assert "GET /assets/report" in endpoints
+
+    def test_django_handler_subclass_in_user_module_is_detected(self):
+        """WSGIHandler subclasses defined outside the django package are detected."""
+        try:
+            from django.core.handlers.wsgi import WSGIHandler
+        except ImportError:
+            pytest.skip("Django not available for integration testing")
+
+        from pytest_api_cov.frameworks import DjangoAdapter, get_framework_adapter
+
+        class MyHandler(WSGIHandler):
+            pass
+
+        MyHandler.__module__ = "mydjango_utils.handlers"
+        instance = object.__new__(MyHandler)
+
+        assert isinstance(get_framework_adapter(instance), DjangoAdapter)
