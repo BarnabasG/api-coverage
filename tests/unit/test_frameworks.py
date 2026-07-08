@@ -254,6 +254,26 @@ class TestDjangoRouteToTemplate:
 
         assert _django_route_to_template("articles/<int:year>/") == "articles/<int:year>/"
 
+    def test_negated_class_containing_slash_stays_single_segment(self):
+        from pytest_api_cov.frameworks import _django_route_to_template
+
+        assert _django_route_to_template("x/(?P<a>[^/]+)/") == "x/<a>/"
+
+    def test_top_level_alternation_becomes_placeholder(self):
+        from pytest_api_cov.frameworks import _django_route_to_template
+
+        assert _django_route_to_template("legacy|new") == "<param1>"
+
+    def test_bounded_repeat_becomes_placeholder(self):
+        from pytest_api_cov.frameworks import _django_route_to_template
+
+        assert _django_route_to_template("a{2,4}/end/") == "<param1>/end/"
+
+    def test_unparseable_route_passes_through(self):
+        from pytest_api_cov.frameworks import _django_route_to_template
+
+        assert _django_route_to_template("bad[route") == "bad[route"
+
     def test_shorthand_class_outside_group_becomes_placeholder(self):
         from pytest_api_cov.frameworks import _django_route_to_template
 

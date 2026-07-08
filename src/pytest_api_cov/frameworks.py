@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import importlib
-import re
 import sys
 from abc import ABC, abstractmethod
 from itertools import count
@@ -11,7 +10,12 @@ from typing import TYPE_CHECKING, Any
 
 if sys.version_info >= (3, 11):
     from enum import StrEnum
+
+    # The regex parser module was renamed from sre_parse in 3.11; typeshed does not declare it.
+    from re import _parser as _sre_parser  # type: ignore[attr-defined]
 else:
+    import sre_parse as _sre_parser
+
     from backports.strenum import StrEnum
 
 
@@ -24,8 +28,6 @@ class SupportedFramework(StrEnum):
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from .models import ApiCallRecorder
 
 # Auto-added companions of GET et al. that would inflate the endpoint count.
@@ -185,96 +187,93 @@ class FastAPIAdapter(BaseAdapter):
         return TrackingFastAPIClient(self.app)
 
 
-_REGEX_SHORTHAND_CLASSES = frozenset("dDwWsS")
-_QUANTIFIER_PATTERN = re.compile(r"[+*?]|\{\d+(?:,\d*)?\}")
+def _class_matches_slash(items: Any) -> bool:
+    """Report whether a character class (the ``av`` of an IN node) can match '/'."""
+    slash = ord("/")
+    negated = bool(items) and items[0][0] is _sre_parser.NEGATE
+    matched = any(
+        (op is _sre_parser.LITERAL and av == slash)
+        or (op is _sre_parser.RANGE and av[0] <= slash <= av[1])
+        or (
+            op is _sre_parser.CATEGORY
+            and av
+            in (
+                _sre_parser.CATEGORY_NOT_WORD,
+                _sre_parser.CATEGORY_NOT_DIGIT,
+                _sre_parser.CATEGORY_NOT_SPACE,
+            )
+        )
+        for op, av in items
+    )
+    return not matched if negated else matched
 
 
-def _consume_quantifier(route: str, i: int) -> int:
-    """Return the index just past a regex quantifier starting at ``i``, if any."""
-    match = _QUANTIFIER_PATTERN.match(route, i)
-    return match.end() if match else i
-
-
-def _skip_class(route: str, i: int) -> int:
-    """Return the index of the ']' closing the character class opened at ``route[i]``."""
-    j = i + 1
-    while j < len(route) and route[j] != "]":
-        j += 2 if route[j] == "\\" else 1
-    return j
-
-
-def _group_placeholder(group: str, next_param: Callable[[], str]) -> str:
-    """Choose a placeholder for a regex group; bodies that can span '/' get a path converter."""
-    named = re.match(r"\(\?P<(\w+)>", group)
-    body = group[named.end() : -1] if named else group[1:-1]
-    multi_segment = "/" in body or re.search(r"(?<!\\)\.", body) is not None or "\\S" in body
-    name = named.group(1) if named else next_param()
-    return f"<path:{name}>" if multi_segment else f"<{name}>"
+def _can_match_slash(nodes: Any) -> bool:
+    """Report whether this parsed regex subtree can match '/', i.e. span path segments."""
+    return any(
+        op is _sre_parser.ANY
+        or (op is _sre_parser.LITERAL and av == ord("/"))
+        or (op is _sre_parser.NOT_LITERAL and av != ord("/"))
+        or (op is _sre_parser.IN and _class_matches_slash(av))
+        or (op is _sre_parser.SUBPATTERN and _can_match_slash(av[3]))
+        or (op is _sre_parser.BRANCH and any(_can_match_slash(branch) for branch in av[1]))
+        or (op in (_sre_parser.MAX_REPEAT, _sre_parser.MIN_REPEAT) and _can_match_slash(av[2]))
+        for op, av in nodes
+    )
 
 
 def _django_route_to_template(route: str) -> str:
     r"""Convert a Django route string to a matchable template.
 
-    ``path()`` routes pass through unchanged. In ``re_path()`` regexes, groups
-    (``(?P<year>[0-9]{4})``), shorthand classes (``\d+``), bare character
-    classes (``[0-9]+``) and bare dots become placeholders (``path:`` variants
-    when the pattern can span ``/``); escaped literals (``\.``) are unescaped
-    and bare quantifiers (a trailing ``/?``) are dropped, so recorded request
-    paths can match the template.
+    ``path()`` routes (pure literals) pass through unchanged. ``re_path()``
+    regexes are parsed with the stdlib regex parser, and every dynamic
+    construct — groups (``(?P<year>[0-9]{4})``), classes (``[0-9]+``),
+    shorthand (``\d+``), dots, alternations — becomes a placeholder,
+    ``<path:...>`` when it can span ``/``. Escaped literals (``\.``) are
+    unescaped and an optional trailing ``/?`` keeps its literal, so recorded
+    request paths can match the template. Unparseable input passes through
+    verbatim.
     """
-    out: list[str] = []
-    i = 0
-    n = len(route)
+    try:
+        parsed = _sre_parser.parse(route)
+    except Exception:  # noqa: BLE001 - not a regex (e.g. a literal path() route with specials)
+        return route
+
+    group_names = {number: name for name, number in parsed.state.groupdict.items()}
     param_counter = count(1)
 
     def next_param() -> str:
         return f"param{next(param_counter)}"
 
-    while i < n:
-        char = route[i]
-        if char == "\\" and i + 1 < n:
-            escaped = route[i + 1]
-            if escaped in _REGEX_SHORTHAND_CLASSES:
-                out.append(f"<{next_param()}>")
-                i = _consume_quantifier(route, i + 2)
+    def placeholder(nodes: Any, name: str | None = None) -> str:
+        name = name or next_param()
+        return f"<path:{name}>" if _can_match_slash(nodes) else f"<{name}>"
+
+    def emit(nodes: Any) -> str:
+        out: list[str] = []
+        for op, av in nodes:
+            if op is _sre_parser.LITERAL:
+                # Escaped literals (\.) arrive pre-unescaped from the parser.
+                out.append(chr(av))
+            elif op is _sre_parser.AT:
+                continue  # anchors (^, $, \b) never appear in request paths
+            elif op is _sre_parser.SUBPATTERN:
+                group_number, _add_flags, _del_flags, body = av
+                out.append(placeholder(body, group_names.get(group_number)))
+            elif op in (_sre_parser.MAX_REPEAT, _sre_parser.MIN_REPEAT):
+                _min_count, max_count, body = av
+                if max_count == 1 and len(body) == 1 and body[0][0] is _sre_parser.LITERAL:
+                    out.append(chr(body[0][1]))  # an optional literal ('/?') keeps its literal
+                elif len(body) == 1 and body[0][0] is _sre_parser.SUBPATTERN:
+                    out.append(emit(body))  # '(...)?' is just the group placeholder
+                else:
+                    out.append(placeholder(body))  # \d+, [0-9]+, .*, a{2,4}, ...
             else:
-                out.append(escaped)
-                i += 2
-        elif char == "(":
-            depth = 0
-            j = i
-            while j < n:
-                inner = route[j]
-                if inner == "\\":
-                    j += 2
-                    continue
-                if inner == "[":
-                    j = _skip_class(route, j)
-                elif inner == "(":
-                    depth += 1
-                elif inner == ")":
-                    depth -= 1
-                    if depth == 0:
-                        break
-                j += 1
-            out.append(_group_placeholder(route[i : j + 1], next_param))
-            i = _consume_quantifier(route, j + 1)
-        elif char == "[":
-            j = _skip_class(route, i)
-            out.append(f"<{next_param()}>")
-            i = _consume_quantifier(route, j + 1)
-        elif char == ".":
-            end = _consume_quantifier(route, i + 1)
-            # A quantified dot (.* / .+) can cross path segments.
-            out.append(f"<path:{next_param()}>" if end > i + 1 else f"<{next_param()}>")
-            i = end
-        elif char in "+*?":
-            # Bare quantifier on the preceding literal (e.g. a trailing '/?'): drop it.
-            i += 1
-        else:
-            out.append(char)
-            i += 1
-    return "".join(out)
+                # IN, ANY, BRANCH, NOT_LITERAL — and any opcode a future Python adds.
+                out.append(placeholder([(op, av)]))
+        return "".join(out)
+
+    return emit(parsed)
 
 
 class DjangoAdapter(BaseAdapter):
