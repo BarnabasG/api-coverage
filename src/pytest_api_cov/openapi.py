@@ -31,8 +31,19 @@ def parse_openapi_spec(path: str) -> list[str]:
         logger.exception("Failed to parse OpenAPI spec", exc_info=True)
         return []
 
+    if not isinstance(spec, dict):
+        logger.error(f"OpenAPI spec is empty or not a mapping: {spec_path}")
+        return []
+
     endpoints: list[str] = []
-    for path_key, path_item in spec.get("paths", {}).items():
+    paths = spec.get("paths", {})
+    if not isinstance(paths, dict):
+        logger.error(f"OpenAPI spec 'paths' section is not a mapping: {spec_path}")
+        return []
+
+    for path_key, path_item in paths.items():
+        if not isinstance(path_item, dict):
+            continue
         endpoints.extend(f"{method.upper()} {path_key}" for method in path_item if method.upper() in HTTP_METHODS)
 
     return sorted(endpoints)

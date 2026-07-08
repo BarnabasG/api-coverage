@@ -85,3 +85,31 @@ class TestParseOpenApiSpec:
 
         endpoints = parse_openapi_spec(str(spec_file))
         assert endpoints == []
+
+    def test_empty_yaml_spec(self, tmp_path):
+        """An empty YAML file parses to None and must not crash fixture setup."""
+        spec_file = tmp_path / "empty.yaml"
+        spec_file.write_text("")
+
+        assert parse_openapi_spec(str(spec_file)) == []
+
+    def test_non_mapping_spec(self, tmp_path):
+        """A top-level list is not a valid spec and must not crash."""
+        spec_file = tmp_path / "list.json"
+        spec_file.write_text("[1, 2, 3]")
+
+        assert parse_openapi_spec(str(spec_file)) == []
+
+    def test_non_mapping_paths_section(self, tmp_path):
+        """A non-mapping paths section returns no endpoints."""
+        spec_file = tmp_path / "badpaths.json"
+        spec_file.write_text(json.dumps({"openapi": "3.0.0", "paths": ["not", "a", "mapping"]}))
+
+        assert parse_openapi_spec(str(spec_file)) == []
+
+    def test_non_mapping_path_item_is_skipped(self, tmp_path):
+        """Malformed path items are skipped, valid ones kept."""
+        spec_file = tmp_path / "baditem.json"
+        spec_file.write_text(json.dumps({"paths": {"/users": {"get": {}}, "/bad": "nope"}}))
+
+        assert parse_openapi_spec(str(spec_file)) == ["GET /users"]

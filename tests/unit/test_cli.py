@@ -108,3 +108,13 @@ class TestMain:
                 monkeypatch.undo()
 
         assert exc_info.value.code == 2
+
+
+class TestModulePathHandling:
+    """Regression tests for module path mangling."""
+
+    def test_module_path_containing_py_substring(self):
+        """Only a trailing .py is stripped; '.py' inside the module path is preserved."""
+        content = generate_conftest_content("FastAPI", "src.my.pyapp.main.py", "app")
+
+        assert "from src.my.pyapp.main import app" in content

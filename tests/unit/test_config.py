@@ -242,3 +242,18 @@ class TestConfigMerging:
             assert config["openapi_spec"] == "openapi.yaml"
         finally:
             os.chdir(original_cwd)
+
+
+class TestFalsyCliValues:
+    """Explicit falsy CLI values must not be treated as unset."""
+
+    def test_fail_under_zero_is_kept(self):
+        """--api-cov-fail-under=0 is a deliberate setting, not an argparse default."""
+        mock_session_config = Mock()
+        mock_session_config.getoption.side_effect = lambda name: {
+            "--api-cov-fail-under": 0.0,
+        }.get(name)
+
+        config = read_session_config(mock_session_config)
+
+        assert config["fail_under"] == 0.0

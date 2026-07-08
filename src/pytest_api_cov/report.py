@@ -17,10 +17,24 @@ if TYPE_CHECKING:
 
 @lru_cache(maxsize=512)
 def endpoint_to_regex(endpoint: str) -> Pattern[str]:
-    """Create a regex pattern from an endpoint by replacing dynamic segments."""
-    placeholder = "___PLACEHOLDER___"
-    temp_endpoint = re.escape(re.sub(r"<[^>]+>|\{[^}]+\}", placeholder, endpoint))
-    return re.compile("^" + temp_endpoint.replace(placeholder, "(.+)") + "$")
+    """Create a regex pattern from an endpoint by replacing dynamic segments.
+
+    Plain parameters match a single path segment so a call to a nested path
+    cannot mark a parent route covered; path-converter parameters (Flask
+    ``<path:x>``, Starlette ``{x:path}``) still match across segments.
+    """
+    segment_placeholder = "___SEGMENT___"
+    path_placeholder = "___PATH___"
+
+    def _placeholder(match: re.Match[str]) -> str:
+        inner = match.group(0)[1:-1]
+        if inner.startswith("path:") or inner.endswith(":path"):
+            return path_placeholder
+        return segment_placeholder
+
+    temp_endpoint = re.escape(re.sub(r"<[^>]+>|\{[^}]+\}", _placeholder, endpoint))
+    pattern = temp_endpoint.replace(segment_placeholder, "([^/]+)").replace(path_placeholder, "(.+)")
+    return re.compile("^" + pattern + "$")
 
 
 def contains_escape_characters(endpoint: str) -> bool:
@@ -124,6 +138,27 @@ def categorise_endpoints(
     return covered, uncovered, excluded
 
 
+def group_endpoints_by_path(
+    endpoints: list[str],
+    called_data: dict[str, set[str]],
+) -> tuple[list[str], dict[str, set[str]]]:
+    """Collapse 'METHOD /path' keys to '/path', merging caller sets across methods."""
+    grouped_endpoints: list[str] = []
+    seen: set[str] = set()
+    for endpoint in endpoints:
+        path = endpoint.split(" ", 1)[1] if " " in endpoint else endpoint
+        if path not in seen:
+            seen.add(path)
+            grouped_endpoints.append(path)
+
+    grouped_calls: dict[str, set[str]] = {}
+    for key, callers in called_data.items():
+        path = key.split(" ", 1)[1] if " " in key else key
+        grouped_calls.setdefault(path, set()).update(callers)
+
+    return grouped_endpoints, grouped_calls
+
+
 def print_endpoints(
     console: Console,
     label: str,
@@ -182,11 +217,20 @@ def generate_pytest_api_cov_report(
     console = Console()
 
     if not discovered_endpoints:
+        if api_cov_config.fail_under is not None:
+            console.print(
+                f"\n[bold red]FAIL: No endpoints discovered but --api-cov-fail-under={api_cov_config.fail_under} "
+                "is set. Check your app/client fixtures or OpenAPI spec.[/bold red]"
+            )
+            return 1
         console.print("\n[bold red]No endpoints discovered. Please check your test setup.[/bold red]")
         return 0
 
     separator = "=" * 20
     console.print(f"\n\n[bold blue]{separator} API Coverage Report {separator}[/bold blue]")
+
+    if api_cov_config.group_methods_by_endpoint:
+        discovered_endpoints, called_data = group_endpoints_by_path(discovered_endpoints, called_data)
 
     covered, uncovered, excluded = categorise_endpoints(
         discovered_endpoints,
@@ -226,6 +270,12 @@ def generate_pytest_api_cov_report(
 
     if api_cov_config.fail_under is None:
         console.print(f"\n[bold green]Total API Coverage: {coverage}%[/bold green]")
+    elif not covered and not uncovered:
+        # Every endpoint was excluded: nothing is measurable, so the gate is vacuous.
+        console.print(
+            f"\n[bold yellow]All {len(excluded)} discovered endpoints are excluded; "
+            "coverage requirement not applied.[/bold yellow]"
+        )
     elif coverage < api_cov_config.fail_under:
         console.print(
             f"\n[bold red]FAIL: Required coverage of {api_cov_config.fail_under}% not met. "

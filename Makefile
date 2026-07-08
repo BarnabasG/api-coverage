@@ -1,6 +1,6 @@
 # Makefile
 
-.PHONY: ruff mypy test clean clean-all version
+.PHONY: ruff mypy test clean clean-all version check pipeline pipeline-ci
 
 version:
 	@uv version
@@ -20,6 +20,13 @@ vulture:
 	@uv run vulture
 
 format: ruff mypy vulture
+
+check:
+	@echo "Running non-mutating checks (format, lint, types, dead code)..."
+	@uv run ruff format --check src tests example
+	@uv run ruff check --no-fix src
+	@uv run mypy
+	@uv run vulture
 
 test:
 	@echo "Running plugin tests..."
@@ -59,4 +66,8 @@ build:
 	@uv build
 
 pipeline: format test cover typeguard test-example test-example-parallel
+
+# CI/publish variant: verifies without rewriting any files, so the built
+# artifact always matches the commit being released.
+pipeline-ci: check test cover typeguard test-example test-example-parallel
 

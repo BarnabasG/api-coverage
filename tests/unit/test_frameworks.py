@@ -219,3 +219,37 @@ class TestAdapterFactory:
 
         with pytest.raises(TypeError, match="Unsupported application type"):
             get_framework_adapter(mock_app)
+
+
+class TestDjangoRouteToTemplate:
+    """Tests for converting Django re_path regexes to matchable templates."""
+
+    def test_named_group(self):
+        from pytest_api_cov.frameworks import _django_route_to_template
+
+        assert _django_route_to_template("articles/(?P<year>[0-9]{4})/") == "articles/<year>/"
+
+    def test_unnamed_groups(self):
+        from pytest_api_cov.frameworks import _django_route_to_template
+
+        assert _django_route_to_template("files/([0-9]+)/([a-z]+)/") == "files/<param1>/<param2>/"
+
+    def test_escaped_literals_are_unescaped(self):
+        from pytest_api_cov.frameworks import _django_route_to_template
+
+        assert _django_route_to_template(r"feed\.json") == "feed.json"
+
+    def test_character_class_containing_parens(self):
+        from pytest_api_cov.frameworks import _django_route_to_template
+
+        assert _django_route_to_template(r"tags/(?P<tag>[()a-z]+)/") == "tags/<tag>/"
+
+    def test_nested_groups_consume_whole_group(self):
+        from pytest_api_cov.frameworks import _django_route_to_template
+
+        assert _django_route_to_template(r"v/(?P<ver>v(1|2))/") == "v/<ver>/"
+
+    def test_path_route_passes_through(self):
+        from pytest_api_cov.frameworks import _django_route_to_template
+
+        assert _django_route_to_template("articles/<int:year>/") == "articles/<int:year>/"

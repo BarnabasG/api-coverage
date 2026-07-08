@@ -98,7 +98,7 @@ def pytest_configure(config: pytest.Config) -> None:
         logger.setLevel(log_level)
         logger.info("Initializing API coverage plugin...")
 
-    if config.pluginmanager.hasplugin("xdist"):
+    if config.getoption("--api-cov-report") and config.pluginmanager.hasplugin("xdist"):
         config.pluginmanager.register(DeferXdistPlugin(), "defer_xdist_plugin")
 
 
@@ -278,6 +278,30 @@ class CoverageWrapper:
         object.__setattr__(self, name, tracked)
         return tracked
 
+    # Dunder lookups bypass __getattr__, so the context-manager protocol (used by
+    # httpx clients to trigger app lifespan) must be delegated explicitly.
+    def __enter__(self) -> "CoverageWrapper":
+        """Enter the wrapped client's context, returning the wrapper."""
+        self._wrapped.__enter__()
+        return self
+
+    def __exit__(self, *exc_info: object) -> Any:
+        """Exit the wrapped client's context."""
+        return self._wrapped.__exit__(*exc_info)
+
+    async def __aenter__(self) -> "CoverageWrapper":
+        """Enter the wrapped client's async context, returning the wrapper."""
+        await self._wrapped.__aenter__()
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> Any:
+        """Exit the wrapped client's async context."""
+        return await self._wrapped.__aexit__(*exc_info)
+
+    def __repr__(self) -> str:
+        """Show the wrapped client."""
+        return f"CoverageWrapper({self._wrapped!r})"
+
 
 def wrap_client_with_coverage(client: Any, recorder: Any, test_name: str) -> Any:
     """Wrap an existing test client with coverage tracking."""
@@ -395,8 +419,14 @@ class DeferXdistPlugin:
     def pytest_testnodedown(self, node: Any) -> None:
         """Collect API call data from each worker as they finish."""
         logger.debug("> Worker node down.")
-        worker_data = node.workeroutput.get("api_call_recorder", {})
-        discovered_endpoints = node.workeroutput.get("discovered_endpoints", [])
+        workeroutput = getattr(node, "workeroutput", None)
+        if workeroutput is None:
+            # A crashed worker never populates workeroutput.
+            logger.debug("> Worker went down without output; skipping merge.")
+            return
+
+        worker_data = workeroutput.get("api_call_recorder", {})
+        discovered_endpoints = workeroutput.get("discovered_endpoints", [])
 
         if worker_data:
             current = getattr(node.config, "worker_api_call_recorder", {})
@@ -406,6 +436,12 @@ class DeferXdistPlugin:
 
             node.config.worker_api_call_recorder = current
 
-        if discovered_endpoints and not getattr(node.config, "worker_discovered_endpoints", []):
-            node.config.worker_discovered_endpoints = discovered_endpoints
-            logger.debug(f"> Set discovered endpoints from worker: {discovered_endpoints}")
+        if discovered_endpoints:
+            current_endpoints = getattr(node.config, "worker_discovered_endpoints", [])
+            seen = set(current_endpoints)
+            for endpoint in discovered_endpoints:
+                if endpoint not in seen:
+                    seen.add(endpoint)
+                    current_endpoints.append(endpoint)
+            node.config.worker_discovered_endpoints = current_endpoints
+            logger.debug(f"> Merged discovered endpoints from worker: {discovered_endpoints}")
