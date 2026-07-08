@@ -103,17 +103,17 @@ Main publishing workflow triggered on pushes to master/main.
 **Key features:**
 - Reads version from `pyproject.toml`
 - Checks if already published (skips if duplicate version)
-- Creates Git tag automatically
-- Runs full test pipeline
+- Runs the full non-mutating check pipeline (`make pipeline-ci`)
 - Builds and publishes to PyPI
 - Verifies publication
+- Creates the Git tag last, only after a successful publish
 
 ### `.github/workflows/ci.yml`
 
 Continuous integration for pull requests.
 
 **Key features:**
-- Runs on multiple Python versions (3.10, 3.11, 3.12)
+- Runs on multiple Python versions (3.10 - 3.14)
 - Runs on multiple OS (Ubuntu, Windows, macOS)
 - Checks code formatting
 - Runs linting
@@ -148,30 +148,25 @@ The workflows use `uv version` (available in uv 0.8+) to extract the version dir
 If you need to publish manually:
 
 ```bash
-# Run the full pipeline
-make pipeline
+# Run the full non-mutating pipeline (what CI runs before publishing)
+make pipeline-ci
 
 # Build the package
 make build
 
-# Set your PyPI token
-export PYPI_TOKEN="your-token-here"
-echo $PYPI_TOKEN > .pypi_token
-
-# Publish
-make publish
+# Publish (uv reads the token from UV_PUBLISH_TOKEN)
+export UV_PUBLISH_TOKEN="your-token-here"
+uv publish
 ```
 
 ## Publishing to Test PyPI
 
-To publish to Test PyPI instead:
+To publish to Test PyPI instead, uncomment the `[[tool.uv.index]]` testpypi
+section in `pyproject.toml`, then:
 
 ```bash
-# Set your Test PyPI token
-echo $TEST_PYPI_TOKEN > .test_pypi_token
-
-# Publish to Test PyPI
-make publish-test
+export UV_PUBLISH_TOKEN="your-test-pypi-token"
+uv publish --index testpypi
 ```
 
 Or create a separate workflow by copying `.github/workflows/publish.yml` and modifying it to use `TEST_PYPI_TOKEN` and the `--index testpypi` flag.

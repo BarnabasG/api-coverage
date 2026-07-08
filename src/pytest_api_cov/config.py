@@ -9,6 +9,8 @@ from typing import Any
 import tomli
 from pydantic import BaseModel, ConfigDict, Field
 
+DEFAULT_CLIENT_FIXTURE_NAMES = ("client", "test_client", "api_client", "app_client")
+
 
 class ApiCoverageReportConfig(BaseModel):
     """Configuration model for API coverage reporting."""
@@ -24,7 +26,7 @@ class ApiCoverageReportConfig(BaseModel):
     force_sugar: bool = Field(default=False, alias="api-cov-force-sugar")
     force_sugar_disabled: bool = Field(default=False, alias="api-cov-force-sugar-disabled")
     client_fixture_names: list[str] = Field(
-        ["client", "test_client", "api_client", "app_client"], alias="api-cov-client-fixture-names"
+        default_factory=lambda: list(DEFAULT_CLIENT_FIXTURE_NAMES), alias="api-cov-client-fixture-names"
     )
     group_methods_by_endpoint: bool = Field(default=False, alias="api-cov-group-methods-by-endpoint")
     openapi_spec: str | None = Field(None, alias="api-cov-openapi-spec")
@@ -60,7 +62,10 @@ _CLI_OPTIONS = {
     "api-cov-openapi-spec": "openapi_spec",
 }
 
-_UNSET: tuple[Any, ...] = (None, [], False)
+
+def _is_unset(value: Any) -> bool:
+    """Detect argparse defaults (None, empty list, False) without equating 0/0.0 to False."""
+    return value is None or value is False or (isinstance(value, list) and not value)
 
 
 def read_session_config(session_config: Any) -> dict[str, Any]:
@@ -68,7 +73,7 @@ def read_session_config(session_config: Any) -> dict[str, Any]:
     config: dict[str, Any] = {}
     for opt, key in _CLI_OPTIONS.items():
         value = session_config.getoption(f"--{opt}")
-        if value not in _UNSET:
+        if not _is_unset(value):
             config[key] = value
 
     if session_config.getoption("--api-cov-hide-uncovered-endpoints"):
@@ -81,7 +86,7 @@ def supports_unicode() -> bool:
     """Check if the terminal supports Unicode output."""
     if not sys.stdout.isatty():
         return False
-    return sys.stdout.encoding.lower() in ("utf-8", "utf8")
+    return (sys.stdout.encoding or "").lower() in ("utf-8", "utf8")
 
 
 def get_pytest_api_cov_report_config(session_config: Any) -> ApiCoverageReportConfig:

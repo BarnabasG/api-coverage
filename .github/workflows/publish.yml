@@ -63,6 +63,40 @@ jobs:
             echo "Version $VERSION not found on PyPI (HTTP $HTTP_CODE)"
           fi
           
+      - name: Set up build environment
+        if: steps.check_published.outputs.pypi_exists == 'false'
+        run: |
+          uv sync --dev
+
+      - name: Run pipeline (tests, linting, etc.)
+        if: steps.check_published.outputs.pypi_exists == 'false'
+        run: make pipeline-ci
+
+      - name: Build package
+        if: steps.check_published.outputs.pypi_exists == 'false'
+        run: make build
+
+      - name: Publish to PyPI
+        if: steps.check_published.outputs.pypi_exists == 'false'
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          if [ -z "$UV_PUBLISH_TOKEN" ]; then
+            echo "❌ PYPI_TOKEN secret is not set. Please configure it in repository settings."
+            echo "   Settings → Secrets and variables → Actions → New repository secret"
+            exit 1
+          fi
+          uv publish
+
+      - name: Verify publication
+        if: steps.check_published.outputs.pypi_exists == 'false'
+        run: |
+          sleep 10  # Wait for PyPI to index the package
+          uv run --with pytest-api-cov --no-project -- python -c \
+            "import pytest_api_cov; print(f'✅ Published version: {pytest_api_cov.__version__}')"
+
+      # Tag only after tests, build, and publish have succeeded, so a failed
+      # release never leaves a version tag pointing at an unreleased commit.
       - name: Create version tag
         if: steps.check_published.outputs.tag_exists == 'false'
         run: |
@@ -70,41 +104,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag -a "v${{ steps.version.outputs.version }}" -m "Release version ${{ steps.version.outputs.version }}"
           git push origin "v${{ steps.version.outputs.version }}"
-          
-      - name: Set up build environment
-        if: steps.check_published.outputs.pypi_exists == 'false'
-        run: |
-          uv sync --dev
-          
-      - name: Run pipeline (tests, linting, etc.)
-        if: steps.check_published.outputs.pypi_exists == 'false'
-        run: make pipeline
-        
-      - name: Build package
-        if: steps.check_published.outputs.pypi_exists == 'false'
-        run: make build
-        
-      - name: Publish to PyPI
-        if: steps.check_published.outputs.pypi_exists == 'false'
-        env:
-          PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
-        run: |
-          if [ -z "$PYPI_TOKEN" ]; then
-            echo "❌ PYPI_TOKEN secret is not set. Please configure it in repository settings."
-            echo "   Settings → Secrets and variables → Actions → New repository secret"
-            exit 1
-          fi
-          echo $PYPI_TOKEN > /tmp/pypi_token.txt
-          uv publish --token $(cat /tmp/pypi_token.txt)
-          rm /tmp/pypi_token.txt
-          
-      - name: Verify publication
-        if: steps.check_published.outputs.pypi_exists == 'false'
-        run: |
-          sleep 10  # Wait for PyPI to index the package
-          uv run --with pytest-api-cov --no-project -- python -c \
-            "import pytest_api_cov; print(f'✅ Published version: {pytest_api_cov.__version__}')"
-          
+
       - name: Skip publish - already published
         if: steps.check_published.outputs.pypi_exists == 'true'
         run: |

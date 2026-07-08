@@ -5,7 +5,7 @@ import argparse
 
 def generate_conftest_content(framework: str, file_path: str, app_variable: str) -> str:
     """Generate example conftest.py content for a given framework."""
-    module_path = file_path.replace("/", ".").replace("\\", ".").replace(".py", "")
+    module_path = file_path.replace("/", ".").replace("\\", ".").removesuffix(".py")
 
     if framework == "FastAPI":
         test_client_import = "from fastapi.testclient import TestClient"

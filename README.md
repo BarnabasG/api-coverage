@@ -459,15 +459,15 @@ When using `--api-cov-report-path`, the plugin generates a detailed JSON report:
   "excluded_count": 0,
   "detail": [
     {
-      "endpoint": "/",
+      "endpoint": "GET /",
       "callers": ["test_root_endpoint"]
     },
     {
-      "endpoint": "/users/{user_id}",
+      "endpoint": "GET /users/{user_id}",
       "callers": ["test_get_user"]
     },
     {
-      "endpoint": "/health",
+      "endpoint": "GET /health",
       "callers": []
     }
   ]

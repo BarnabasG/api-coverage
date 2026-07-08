@@ -265,14 +265,14 @@ class TestPluginHooks:
         mock_config.pluginmanager.register.assert_not_called()
 
     def test_pytest_configure_without_api_cov_report(self):
-        """Logging is skipped when api-cov-report is off."""
+        """No xdist registration (or logging setup) when api-cov-report is off."""
         mock_config = Mock()
         mock_config.getoption.return_value = False
         mock_config.pluginmanager.hasplugin.return_value = True
 
         pytest_configure(mock_config)
 
-        mock_config.pluginmanager.register.assert_called_once()
+        mock_config.pluginmanager.register.assert_not_called()
 
     @pytest.mark.parametrize(
         ("verbose_level", "expected_log_level"),
@@ -357,6 +357,33 @@ class TestDeferXdistPlugin:
         assert "/new" in worker_data
         assert "existing_test" in worker_data["/existing"]
         assert "new_test" in worker_data["/new"]
+
+    def test_pytest_testnodedown_crashed_worker_without_workeroutput(self):
+        """A worker that crashed before producing output must not raise."""
+        mock_node = Mock(spec=["config"])
+
+        plugin = DeferXdistPlugin()
+        plugin.pytest_testnodedown(mock_node)
+
+    def test_pytest_testnodedown_merges_endpoints_from_all_workers(self):
+        """Discovered endpoints accumulate across workers instead of first-worker-wins."""
+        mock_config = Mock()
+        mock_config.worker_discovered_endpoints = []
+        mock_config.worker_api_call_recorder = {}
+
+        first = Mock()
+        first.config = mock_config
+        first.workeroutput = {"discovered_endpoints": ["GET /a", "GET /b"]}
+
+        second = Mock()
+        second.config = mock_config
+        second.workeroutput = {"discovered_endpoints": ["GET /b", "GET /c"]}
+
+        plugin = DeferXdistPlugin()
+        plugin.pytest_testnodedown(first)
+        plugin.pytest_testnodedown(second)
+
+        assert mock_config.worker_discovered_endpoints == ["GET /a", "GET /b", "GET /c"]
 
 
 def test_extract_app_from_client_variants():
@@ -539,3 +566,33 @@ def test_create_coverage_fixture_with_openapi_spec(mock_parse_spec, mock_get_con
     assert "GET /users" in coverage_data.discovered_endpoints.endpoints
     assert "POST /users" in coverage_data.discovered_endpoints.endpoints
     assert coverage_data.discovered_endpoints.discovery_source == "openapi_spec"
+
+
+def test_coverage_wrapper_supports_context_manager_protocol():
+    """`with wrapper:` delegates to the wrapped client and yields the wrapper."""
+    from unittest.mock import MagicMock
+
+    from pytest_api_cov.plugin import CoverageWrapper
+
+    client = MagicMock()
+    wrapper = CoverageWrapper(client, Mock(), "test_ctx")
+
+    with wrapper as entered:
+        assert entered is wrapper
+
+    client.__enter__.assert_called_once()
+    client.__exit__.assert_called_once()
+
+
+def test_coverage_wrapper_records_request_method_calls():
+    """The .request(method, url) call pattern is recorded with the query stripped."""
+    from pytest_api_cov.plugin import CoverageWrapper
+
+    client = Mock()
+    recorder = Mock()
+    wrapper = CoverageWrapper(client, recorder, "test_req")
+
+    wrapper.request("GET", "/things?q=1")
+
+    client.request.assert_called_once_with("GET", "/things?q=1")
+    recorder.record_call.assert_called_once_with("/things", "test_req", "GET")

@@ -36,14 +36,14 @@ jobs:
         run: |
           uv sync --dev
           
-      # - name: Run code formatting check
-      #   run: |
-      #     uv run ruff format --check .
-          
-      # - name: Run linting
-      #   run: |
-      #     uv run ruff check .
-          
+      - name: Run code formatting check
+        run: |
+          uv run ruff format --check src tests example
+
+      - name: Run linting
+        run: |
+          uv run ruff check --no-fix src
+
       - name: Run type checking
         run: |
           uv run mypy

@@ -21,9 +21,17 @@ class TestEndpointCategorization:
 
     def test_endpoint_to_regex_conversion(self):
         """Regex creation for Flask and FastAPI style placeholders."""
-        assert endpoint_to_regex("/users/<id>").pattern == "^/users/(.+)$"
-        assert endpoint_to_regex("/items/{item_id}/data").pattern == "^/items/(.+)/data$"
+        assert endpoint_to_regex("/users/<id>").pattern == "^/users/([^/]+)$"
+        assert endpoint_to_regex("/items/{item_id}/data").pattern == "^/items/([^/]+)/data$"
         assert endpoint_to_regex("/static/path").pattern == "^/static/path$"
+        assert endpoint_to_regex("/files/<path:filename>").pattern == "^/files/(.+)$"
+        assert endpoint_to_regex("/files/{file_path:path}").pattern == "^/files/(.+)$"
+
+    def test_parameter_matching_is_segment_scoped(self):
+        """A call to a nested path must not mark a parent parameterised route covered."""
+        assert endpoint_to_regex("GET /users/{user_id}").match("GET /users/123")
+        assert not endpoint_to_regex("GET /users/{user_id}").match("GET /users/123/avatar")
+        assert endpoint_to_regex("GET /files/<path:filename>").match("GET /files/a/b/c.txt")
 
     def test_categorise_endpoints(self):
         """Standard categorisation with exclusions."""
@@ -346,3 +354,90 @@ class TestWriteReportFile:
         mock_open.assert_called_once()
         assert mock_open.call_args[0] == ("w",)
         mock_json_dump.assert_called_once_with(report_data, mock_open.return_value.__enter__.return_value, indent=2)
+
+
+class TestGroupingAndDegenerateCases:
+    """Tests for method grouping and degenerate fail_under handling."""
+
+    def test_group_endpoints_by_path(self):
+        """Method-prefixed keys collapse to paths with caller sets merged."""
+        from pytest_api_cov.report import group_endpoints_by_path
+
+        endpoints = ["GET /users", "POST /users", "GET /health"]
+        called = {"GET /users": {"test_a"}, "POST /users": {"test_b"}}
+
+        grouped_endpoints, grouped_calls = group_endpoints_by_path(endpoints, called)
+
+        assert grouped_endpoints == ["/users", "/health"]
+        assert grouped_calls == {"/users": {"test_a", "test_b"}}
+
+    @patch("pytest_api_cov.report.Console")
+    def test_generate_report_grouped_methods(self, mock_console_cls):
+        """With grouping, an endpoint counts covered if any method was tested."""
+        mock_console = mock_console_cls.return_value
+        config = ApiCoverageReportConfig.model_validate({"group_methods_by_endpoint": True})
+        discovered = ["GET /users/{id}", "PUT /users/{id}", "DELETE /users/{id}", "GET /users", "POST /users"]
+        called = {"GET /users/123": {"test_get"}, "POST /users": {"test_post"}}
+
+        status = generate_pytest_api_cov_report(config, called, discovered)
+
+        assert status == 0
+        total_print = next(c for c in mock_console.print.call_args_list if "Total API Coverage" in c.args[0])
+        assert "100.0%" in total_print.args[0]
+
+    @patch("pytest_api_cov.report.Console")
+    def test_generate_report_fail_under_with_no_endpoints(self, mock_console_cls):
+        """A configured fail_under gate must fail when discovery found nothing."""
+        mock_console = mock_console_cls.return_value
+        config = ApiCoverageReportConfig.model_validate({"fail_under": 80.0})
+
+        status = generate_pytest_api_cov_report(config, {}, [])
+
+        assert status == 1
+        fail_print = next(c for c in mock_console.print.call_args_list if "FAIL" in c.args[0])
+        assert "No endpoints discovered" in fail_print.args[0]
+
+    @patch("pytest_api_cov.report.Console")
+    def test_generate_report_fail_under_with_all_endpoints_excluded(self, mock_console_cls):
+        """A real threshold fails closed when exclusions leave nothing measurable."""
+        mock_console = mock_console_cls.return_value
+        config = ApiCoverageReportConfig.model_validate({"fail_under": 80.0, "exclusion_patterns": ["*"]})
+
+        status = generate_pytest_api_cov_report(config, {}, ["GET /a", "GET /b"])
+
+        assert status == 1
+        fail_print = next(c for c in mock_console.print.call_args_list if "FAIL" in c.args[0])
+        assert "All 2 discovered endpoints are excluded" in fail_print.args[0]
+
+    @patch("pytest_api_cov.report.Console")
+    def test_generate_report_fail_under_zero_with_all_endpoints_excluded(self, mock_console_cls):
+        """An explicit 0% threshold is trivially met even when everything is excluded."""
+        config = ApiCoverageReportConfig.model_validate({"fail_under": 0.0, "exclusion_patterns": ["*"]})
+
+        status = generate_pytest_api_cov_report(config, {}, ["GET /a"])
+
+        assert status == 0
+
+    @patch("pytest_api_cov.report.Console")
+    def test_generate_report_fail_under_zero_with_no_endpoints(self, mock_console_cls):
+        """An explicit 0% threshold does not hard-fail on empty discovery."""
+        config = ApiCoverageReportConfig.model_validate({"fail_under": 0.0})
+
+        status = generate_pytest_api_cov_report(config, {}, [])
+
+        assert status == 0
+
+    @patch("pytest_api_cov.report.Console")
+    def test_method_scoped_exclusions_apply_before_grouping(self, mock_console_cls):
+        """Method-scoped exclusion patterns still work with group-methods-by-endpoint."""
+        config = ApiCoverageReportConfig.model_validate(
+            {
+                "group_methods_by_endpoint": True,
+                "exclusion_patterns": ["GET /health"],
+                "fail_under": 100.0,
+            }
+        )
+
+        status = generate_pytest_api_cov_report(config, {"GET /api": {"t"}}, ["GET /health", "GET /api"])
+
+        assert status == 0

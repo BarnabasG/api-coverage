@@ -104,6 +104,7 @@ class SessionData(BaseModel):
     recorder: ApiCallRecorder = Field(default_factory=ApiCallRecorder)
     discovered_endpoints: EndpointDiscovery = Field(default_factory=EndpointDiscovery)
     discovery_complete: bool = Field(default=False)
+    openapi_discovery_attempted: bool = Field(default=False)
 
     def record_call(self, endpoint: str, test_name: str, method: str = "GET") -> None:
         """Record an API call."""

@@ -58,7 +58,32 @@ class TestFlaskIntegration:
             pytest.skip("Flask not available for integration testing")
 
     def test_flask_excluded_endpoints(self):
-        """Test that static endpoints are excluded."""
+        """Framework static routes are excluded by endpoint name; user routes are kept."""
+        try:
+            from flask import Blueprint, Flask
+
+            app = Flask(__name__, static_url_path="/assets")
+
+            @app.route("/api/users")
+            def api_users():
+                return "API Users"
+
+            blueprint = Blueprint("admin", __name__, static_folder="static", url_prefix="/admin")
+            app.register_blueprint(blueprint)
+
+            adapter = FlaskAdapter(app)
+            endpoints = adapter.get_endpoints()
+            paths = [ep.split(" ", 1)[1] if " " in ep else ep for ep in endpoints]
+
+            assert "/assets/<path:filename>" not in paths
+            assert "/admin/static/<path:filename>" not in paths
+            assert "GET /api/users" in endpoints
+
+        except ImportError:
+            pytest.skip("Flask not available for integration testing")
+
+    def test_flask_user_route_shadowing_static_path_is_kept(self):
+        """A user view routed under /static/ is a real endpoint and must be counted."""
         try:
             from flask import Flask
 
@@ -68,15 +93,10 @@ class TestFlaskIntegration:
             def static_file(filename):
                 return f"Static {filename}"
 
-            @app.route("/api/users")
-            def api_users():
-                return "API Users"
-
             adapter = FlaskAdapter(app)
             endpoints = adapter.get_endpoints()
 
-            assert "/static/<path:filename>" not in [ep.split(" ", 1)[1] if " " in ep else ep for ep in endpoints]
-            assert "GET /api/users" in endpoints
+            assert "GET /static/<path:filename>" in endpoints
 
         except ImportError:
             pytest.skip("Flask not available for integration testing")
@@ -160,3 +180,241 @@ class TestFastAPIIntegration:
 
         except ImportError:
             pytest.skip("FastAPI not available for integration testing")
+
+
+class TestFlaskTrackingRegressions:
+    """Regression tests for Flask tracked-client recording."""
+
+    @staticmethod
+    def _make_adapter_and_recorder():
+        from flask import Flask
+
+        app = Flask(__name__)
+
+        @app.route("/items")
+        def items():
+            return "Items"
+
+        @app.route("/slash/")
+        def slash():
+            return "Slash"
+
+        @app.route("/a")
+        @app.route("/b")
+        def multi():
+            return "Multi"
+
+        return FlaskAdapter(app), ApiCallRecorder()
+
+    def test_query_string_calls_are_recorded(self):
+        """A request with a query string still records the matched rule."""
+        try:
+            adapter, recorder = self._make_adapter_and_recorder()
+        except ImportError:
+            pytest.skip("Flask not available for integration testing")
+
+        client = adapter.get_tracked_client(recorder, "test_query")
+        response = client.get("/items?page=2&size=10")
+
+        assert response.status_code == 200
+        assert "GET /items" in recorder
+
+    def test_multi_decorated_view_records_the_called_rule(self):
+        """With two route decorators on one view, the rule actually called is recorded."""
+        try:
+            adapter, recorder = self._make_adapter_and_recorder()
+        except ImportError:
+            pytest.skip("Flask not available for integration testing")
+
+        client = adapter.get_tracked_client(recorder, "test_multi")
+        client.get("/a")
+
+        assert "GET /a" in recorder
+        assert "GET /b" not in recorder
+
+        client.get("/b")
+        assert "GET /b" in recorder
+
+    def test_followed_trailing_slash_redirect_is_recorded(self):
+        """/slash -> /slash/ with follow_redirects=True reaches the view and is recorded."""
+        try:
+            adapter, recorder = self._make_adapter_and_recorder()
+        except ImportError:
+            pytest.skip("Flask not available for integration testing")
+
+        client = adapter.get_tracked_client(recorder, "test_redirect")
+        response = client.get("/slash", follow_redirects=True)
+
+        assert response.status_code == 200
+        assert "GET /slash/" in recorder
+
+    def test_unfollowed_redirect_is_not_recorded(self):
+        """Without follow_redirects the view never runs, so nothing is recorded."""
+        try:
+            adapter, recorder = self._make_adapter_and_recorder()
+        except ImportError:
+            pytest.skip("Flask not available for integration testing")
+
+        client = adapter.get_tracked_client(recorder, "test_no_follow")
+        response = client.get("/slash")
+
+        assert response.status_code in (301, 308)
+        assert len(recorder) == 0
+
+
+class TestFrameworkSubclassDetection:
+    """Apps subclassing Flask/FastAPI must be detected."""
+
+    def test_flask_subclass_is_detected(self):
+        """A Flask subclass resolves to the Flask adapter."""
+        try:
+            from flask import Flask
+        except ImportError:
+            pytest.skip("Flask not available for integration testing")
+
+        from pytest_api_cov.frameworks import get_framework_adapter
+
+        class CustomFlask(Flask):
+            pass
+
+        assert isinstance(get_framework_adapter(CustomFlask(__name__)), FlaskAdapter)
+
+    def test_fastapi_subclass_is_detected(self):
+        """A FastAPI subclass resolves to the FastAPI adapter."""
+        try:
+            from fastapi import FastAPI
+        except ImportError:
+            pytest.skip("FastAPI not available for integration testing")
+
+        from pytest_api_cov.frameworks import get_framework_adapter
+
+        class CustomFastAPI(FastAPI):
+            pass
+
+        assert isinstance(get_framework_adapter(CustomFastAPI()), FastAPIAdapter)
+
+
+class TestFastAPIRouteDiscoveryRegressions:
+    """Regression tests for FastAPI/Starlette route discovery and recording."""
+
+    def test_plain_starlette_routes_are_discovered_but_docs_are_not(self):
+        """add_route() endpoints appear; auto-generated docs routes do not."""
+        try:
+            from fastapi import FastAPI
+            from starlette.responses import PlainTextResponse
+        except ImportError:
+            pytest.skip("FastAPI not available for integration testing")
+
+        app = FastAPI()
+
+        async def plain(request):
+            return PlainTextResponse("ok")
+
+        app.add_route("/plain", plain, methods=["GET"])
+
+        endpoints = FastAPIAdapter(app).get_endpoints()
+
+        assert "GET /plain" in endpoints
+        assert not any("/docs" in ep or "/openapi.json" in ep or "/redoc" in ep for ep in endpoints)
+
+    def test_mounted_starlette_app_routes_are_discovered(self):
+        """Routes of a mounted plain Starlette app appear with the mount prefix."""
+        try:
+            from fastapi import FastAPI
+            from starlette.applications import Starlette
+            from starlette.responses import PlainTextResponse
+            from starlette.routing import Route
+        except ImportError:
+            pytest.skip("FastAPI not available for integration testing")
+
+        async def sub(request):
+            return PlainTextResponse("sub")
+
+        subapp = Starlette(routes=[Route("/sub", sub, methods=["GET"])])
+        app = FastAPI()
+        app.mount("/mnt", subapp)
+
+        endpoints = FastAPIAdapter(app).get_endpoints()
+
+        assert "GET /mnt/sub" in endpoints
+
+    def test_followed_slash_redirect_records_final_path(self):
+        """/items redirected to /items/ records the real route path, not the original."""
+        try:
+            from fastapi import FastAPI
+        except ImportError:
+            pytest.skip("FastAPI not available for integration testing")
+
+        app = FastAPI()
+
+        @app.get("/items/")
+        def items():
+            return {"ok": True}
+
+        recorder = ApiCallRecorder()
+        client = FastAPIAdapter(app).get_tracked_client(recorder, "test_redirect")
+
+        response = client.get("/items", follow_redirects=True)
+
+        assert response.status_code == 200
+        # Both the requested path and the redirect target get credit.
+        assert "GET /items/" in recorder
+        assert "GET /items" in recorder
+
+    def test_redirecting_endpoint_keeps_its_own_coverage_credit(self):
+        """A route that returns RedirectResponse is itself recorded as covered."""
+        try:
+            from fastapi import FastAPI
+            from fastapi.responses import RedirectResponse
+        except ImportError:
+            pytest.skip("FastAPI not available for integration testing")
+
+        app = FastAPI()
+
+        @app.get("/old")
+        def old():
+            return RedirectResponse("/new")
+
+        @app.get("/new")
+        def new():
+            return {"ok": True}
+
+        recorder = ApiCallRecorder()
+        client = FastAPIAdapter(app).get_tracked_client(recorder, "test_redirect_source")
+
+        response = client.get("/old", follow_redirects=True)
+
+        assert response.status_code == 200
+        assert "GET /old" in recorder
+        assert "GET /new" in recorder
+
+    def test_user_route_with_static_endpoint_name_is_kept(self):
+        """A real Flask route whose endpoint name ends in '.static' must not be dropped."""
+        try:
+            from flask import Flask
+        except ImportError:
+            pytest.skip("Flask not available for integration testing")
+
+        app = Flask(__name__, static_folder=None)
+        app.add_url_rule("/assets/report", endpoint="docs.static", view_func=lambda: "hi")
+
+        endpoints = FlaskAdapter(app).get_endpoints()
+
+        assert "GET /assets/report" in endpoints
+
+    def test_django_handler_subclass_in_user_module_is_detected(self):
+        """WSGIHandler subclasses defined outside the django package are detected."""
+        try:
+            from django.core.handlers.wsgi import WSGIHandler
+        except ImportError:
+            pytest.skip("Django not available for integration testing")
+
+        from pytest_api_cov.frameworks import DjangoAdapter, get_framework_adapter
+
+        class MyHandler(WSGIHandler):
+            pass
+
+        MyHandler.__module__ = "mydjango_utils.handlers"
+        instance = object.__new__(MyHandler)
+
+        assert isinstance(get_framework_adapter(instance), DjangoAdapter)

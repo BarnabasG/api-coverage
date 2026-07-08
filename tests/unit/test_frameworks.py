@@ -219,3 +219,101 @@ class TestAdapterFactory:
 
         with pytest.raises(TypeError, match="Unsupported application type"):
             get_framework_adapter(mock_app)
+
+
+class TestDjangoRouteToTemplate:
+    """Tests for converting Django re_path regexes to matchable templates."""
+
+    def test_named_group(self):
+        from pytest_api_cov.frameworks import _django_route_to_template
+
+        assert _django_route_to_template("articles/(?P<year>[0-9]{4})/") == "articles/<year>/"
+
+    def test_unnamed_groups(self):
+        from pytest_api_cov.frameworks import _django_route_to_template
+
+        assert _django_route_to_template("files/([0-9]+)/([a-z]+)/") == "files/<param1>/<param2>/"
+
+    def test_escaped_literals_are_unescaped(self):
+        from pytest_api_cov.frameworks import _django_route_to_template
+
+        assert _django_route_to_template(r"feed\.json") == "feed.json"
+
+    def test_character_class_containing_parens(self):
+        from pytest_api_cov.frameworks import _django_route_to_template
+
+        assert _django_route_to_template(r"tags/(?P<tag>[()a-z]+)/") == "tags/<tag>/"
+
+    def test_nested_groups_consume_whole_group(self):
+        from pytest_api_cov.frameworks import _django_route_to_template
+
+        assert _django_route_to_template(r"v/(?P<ver>v(1|2))/") == "v/<ver>/"
+
+    def test_path_route_passes_through(self):
+        from pytest_api_cov.frameworks import _django_route_to_template
+
+        assert _django_route_to_template("articles/<int:year>/") == "articles/<int:year>/"
+
+    def test_negated_class_containing_slash_stays_single_segment(self):
+        from pytest_api_cov.frameworks import _django_route_to_template
+
+        assert _django_route_to_template("x/(?P<a>[^/]+)/") == "x/<a>/"
+
+    def test_top_level_alternation_becomes_placeholder(self):
+        from pytest_api_cov.frameworks import _django_route_to_template
+
+        assert _django_route_to_template("legacy|new") == "<param1>"
+
+    def test_bounded_repeat_becomes_placeholder(self):
+        from pytest_api_cov.frameworks import _django_route_to_template
+
+        assert _django_route_to_template("a{2,4}/end/") == "<param1>/end/"
+
+    def test_unparseable_route_passes_through(self):
+        from pytest_api_cov.frameworks import _django_route_to_template
+
+        assert _django_route_to_template("bad[route") == "bad[route"
+
+    def test_shorthand_class_outside_group_becomes_placeholder(self):
+        from pytest_api_cov.frameworks import _django_route_to_template
+
+        assert _django_route_to_template(r"v\d+/users/") == "v<param1>/users/"
+
+    def test_bare_character_class_becomes_placeholder(self):
+        from pytest_api_cov.frameworks import _django_route_to_template
+
+        assert _django_route_to_template("v[0-9]+/users/") == "v<param1>/users/"
+
+    def test_multi_segment_group_gets_path_converter(self):
+        from pytest_api_cov.frameworks import _django_route_to_template
+
+        assert _django_route_to_template("files/(?P<rest>.*)") == "files/<path:rest>"
+
+    def test_trailing_optional_slash_quantifier_is_dropped(self):
+        from pytest_api_cov.frameworks import _django_route_to_template
+
+        assert _django_route_to_template(r"articles/(?P<slug>[\w-]+)/?") == "articles/<slug>/"
+
+    def test_failed_framework_import_is_probed_only_once(self, monkeypatch):
+        import pytest_api_cov.frameworks as frameworks
+
+        calls = []
+
+        def counting_import(name, *args, **kwargs):
+            calls.append(name)
+            raise ImportError(name)
+
+        monkeypatch.setattr(frameworks.importlib, "import_module", counting_import)
+        monkeypatch.setattr(frameworks, "_import_failed", set())
+
+        assert frameworks._optional_class("not_a_real_framework_xyz", "App") is None
+        assert frameworks._optional_class("not_a_real_framework_xyz", "App") is None
+        assert calls.count("not_a_real_framework_xyz") == 1
+
+    def test_optional_class_resolves_current_module_object(self):
+        import sys
+
+        from pytest_api_cov.frameworks import _optional_class
+
+        flask_class = _optional_class("flask", "Flask")
+        assert flask_class is sys.modules["flask"].Flask
